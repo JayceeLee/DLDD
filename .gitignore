@@ -39,3 +39,8 @@ luac.out
 *.x86_64
 *.hex
 
+# Torch7 files
+*.t7
+
+# Data Files
+*.hdf5

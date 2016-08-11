@@ -41,9 +41,13 @@ function DataLoader:__init(dataset, opt, split)
       _G.dataset = dataset
       _G.preprocess = dataset:preprocess()
       if split == 'train' then
-	_G.dataset.sample = dataset.sampleImagesRandom
+         if opt.samplePeople then
+            _G.dataset.sample = dataset.samplePeople
+         else
+            _G.dataset.sample = dataset.sampleImagesRandom
+         end
       else
-        _G.dataset.sample = dataset.sampleImages
+         _G.dataset.sample = dataset.sampleImages
       end
       return dataset.imageInfo.labels:size(1)
    end
@@ -55,9 +59,15 @@ function DataLoader:__init(dataset, opt, split)
    self.peoplePerBatch  = opt.peoplePerBatch 
    self.imagesPerPerson = opt.imagesPerPerson 
    if split == 'train' then 
-    self.epochSize       = opt.epochSize
+      self.epochSize       = opt.epochSize
+      if opt.samplePeople then
+         self.getInfo = self.infoForSamplingPeople
+      else
+         self.getInfo = self.infoForRandomExample
+      end
    else
-    self.epochSize       = math.ceil(self.__size/opt.batchSize)
+     self.epochSize       = math.ceil(self.__size/opt.batchSize)
+     self.getInfo = self.infoForNormalEpoch
    end
    self.opt             = opt    
    self.split           = split
@@ -71,19 +81,19 @@ end
 function DataLoader:run()
    local threads = self.threads
    local size, batchSize = self.__size, self.batchSize
-   local perm = torch.randperm(size)
-   local idx, idxSample, sample = 1, 1, nil
-
+   self.perm = torch.randperm(size)
+   local idx, sample = 1,  nil
+   self.idxSample = 1
    local function enqueue()
       while idx <= self.epochSize and threads:acceptsjob() do
-	local indices = perm:narrow(1, idxSample, math.min(batchSize, size - idxSample + 1))
+	     local infoData = self:getInfo(idxSample) 
         threads:addjob(
-            function(opt, indices)
-	       local indices, additionalInfo = _G.dataset:sample(opt.batchSize, indices)
+            function(infoSampling)
+               local indices, additionalInfo = _G.dataset:sample(infoSampling)
                additionalInfo.indices = indices
-	       local sz = indices:size(1)
+               local sz = indices:size(1)
                local batch, imageSize
-	       local target = torch.IntTensor(sz)
+               local target = torch.IntTensor(sz)
                for i, idx in ipairs(indices:totable()) do
                   local sample = _G.dataset:get(idx)
                   local input = _G.preprocess(sample.input)
@@ -92,23 +102,22 @@ function DataLoader:run()
                      batch = torch.FloatTensor(sz, table.unpack(imageSize))
                   end
                   batch[i]:copy(input)
-		  target[i] = sample.target
+                  target[i] = sample.target
                end
                collectgarbage()
                return {
                   input = batch:view(sz, table.unpack(imageSize)),
-		  target = target,
-		  info  = additionalInfo,
+                  target = target,
+                  info  = additionalInfo,
                }
             end,
             function(_sample_)
                sample = _sample_
             end,
-	    self.opt,
-	    indices
+            infoData
          )
          idx = idx + 1
-	 idxSample = idxSample + batchSize
+         self.idxSample = self.idxSample + batchSize
       end
    end
 
@@ -128,6 +137,25 @@ function DataLoader:run()
    end
 
    return loop
+end
+
+function DataLoader:infoForNormalEpoch()
+   local info = {}
+   info.indices = self.perm:narrow(1, self.idxSample, math.min(self.batchSize, self.__size - self.idxSample + 1))
+   return info
+end
+
+function DataLoader:infoForRandomExample()
+   local info = {}
+   info.batchSize = self.batchSize
+   return info
+end
+
+function DataLoader:infoForSamplingPeople()
+   local info = {}
+   info.peoplePerBatch = self.peoplePerBatch
+   info.imagesPerPerson = self.imagesPerPerson
+   return info
 end
 
 return M.DataLoader

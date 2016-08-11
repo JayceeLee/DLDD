@@ -70,28 +70,28 @@ function ImageData:get(i)
 end
 
 -- return random idx of images
-function ImageData:sampleImagesRandom(batchSize)
-  return torch.randperm(self.size)[{{1,batchSize}}]:int(), {}
+function ImageData:sampleImagesRandom(info)
+  return torch.randperm(self.size)[{{1,info.batchSize}}]:int(), {}
 end
 
 -- return next idx of images, generated outside function to be synchronized between threads
-function ImageData:sampleImages(batchSize, indexes)
-  return indexes, {}
+function ImageData:sampleImages(info)
+  return info.indices, {}
 end
 
-function ImageData:samplePeople(peoplePerBatch, imagesPerPerson)
+function ImageData:samplePeople(info)
 
-   local classes = torch.randperm(#self.classList)[{{1,peoplePerBatch}}]:int()
-   local nSamplesPerClass = torch.Tensor(peoplePerBatch)
-   for i=1,peoplePerBatch do
-      local nSample = math.min(self.imageInfo.classSample[classes[i]]:nElement(), imagesPerPerson)
+   local classes = torch.randperm(#self.classList)[{{1,info.peoplePerBatch}}]:int()
+   local nSamplesPerClass = torch.Tensor(info.peoplePerBatch)
+   for i=1,info.peoplePerBatch do
+      local nSample = math.min(self.imageInfo.classSample[classes[i]]:nElement(), info.imagesPerPerson)
       nSamplesPerClass[i] = nSample
    end
 
    local data = torch.Tensor(nSamplesPerClass:sum())
    local targets = torch.Tensor(nSamplesPerClass:sum())
    local dataIdx = 1
-   for i=1,peoplePerBatch do
+   for i=1,info.peoplePerBatch do
       local cls = classes[i]
       local nSamples = nSamplesPerClass[i]
       local nTotal = self.imageInfo.classSample[classes[i]]:nElement()
@@ -105,12 +105,13 @@ function ImageData:samplePeople(peoplePerBatch, imagesPerPerson)
       for j = 1, nSamples do
          data[dataIdx] = self.imageInfo.classSample[cls][shuffle[j]]
          targets[dataIdx] = cls
-	 dataIdx = dataIdx + 1
+         dataIdx = dataIdx + 1
       end
    end
    assert(dataIdx - 1 == nSamplesPerClass:sum())
-
-   return data, nSamplesPerClass, targets
+   local infoSampling = {}
+   infoSampling.nSamplesPerClass = nSamplesPerClass
+   return data, infoSampling
 end
 
 

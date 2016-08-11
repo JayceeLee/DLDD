@@ -29,6 +29,7 @@ function M.parse(arg)
    cmd:option('-cache', paths.concat(script_path(), 'work'), 'Directory to cache experiments and data.')
    cmd:option('-save', '', 'Directory to save experiment.')
    cmd:option('-nClasses',         0,      'Number of classes in the dataset')
+   cmd:option('-samplePeople',  false, 'Sample people using peoplePerBatch and imagesPerPerson')
    ------------- Training options --------------------
    cmd:option('-nEpochs', 1000, 'Number of total epochs to run')
    cmd:option('-epochSize', 250, 'Number of batches per epoch')

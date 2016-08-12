@@ -13,7 +13,7 @@ end
 paths.dofile('criterions/TripletEmbedding.lua')
 paths.dofile('criterions/ParallelCriterionS.lua')
 paths.dofile('criterions/EmptyCriterion.lua')
-
+paths.dofile('middleBlock/TripletSampling.lua')
 
 local M = {}
 
@@ -54,52 +54,25 @@ end
 
 -- define any sampling, normaliation or learning classification layer. 
 -- [1] = raw embeding [2] = output from classification [3] = pairs [4] = triplets
--- local MiddleBlock, parent = torch.class('nn.MiddleBlock', 'nn.Module')
--- function MiddleBlock:__init(blocks, opt)
---   self.blocks = blocks
---   self.gradInput = {}
---   
--- end
--- 
--- function MiddleBlock:updateOutput(input)
---   self.output = {}
---   for key,block in pairs(self.blocks) do
---     self.output[key] = block:forward(input)
---   end
---   return self.output
--- end
--- 
--- function MiddleBlock:updateGradInput(input, gradOutput)
---   self.gradInput = nn.utils.recursiveResizeAs(self.gradInput, input)
---   nn.utils.recursiveFill(self.gradInput, 0)
---   for key,block in ipairs(self.blocks) do
---     nn.utils.recursiveAdd(self.gradInput, 1.0, block:backward(input, gradOutput[i]))
---   end
---   return self.gradInput
--- end
--- 
--- function MiddleBlock:accGradParameters(input, gradOutput, scale) end
--- 
--- function MiddleBlock:type(type, tensorCache)
---    self.gradInput = {}
---    return parent.type(self, type, tensorCache)
--- end
-  
-  
-  
+
 function M.middleBlockSetup(opt)
---   local middleBlockData = {}
---   middleBlockData[1] = nn.Identity()
---   middleBlockData[2] = nn.Seqential():add(nn.ReLU(true)):add(nn.Linear(opt.embSize,opt.nClasses))
---   middleBlockData[3] = nn.Identity() --nn.Seqential():add(nn.Normalization(2)):add(nn.PairSampling())
---   middleBlockData[3] = nn.Identity() --nn.Seqential():add(nn.Normalization(2)):add(nn.TripletSampling())
---   middleBlock = nn.MiddleBlock(middleBlockData, opt)
   local middleBlock = nn.ConcatTable()
-  middleBlock:add(nn.Identity())
-  classificationBlock = nn.Sequential():add(nn.ReLU(true)):add(nn.Linear(opt.embSize,10))--opt.nClasses))
+  middleBlock:add(nn.Identity()) -- raw embeding
+  -- Classification module
+  classificationBlock = nn.Identity()
+  if config.SoftMaxLoss then
+    classificationBlock = nn.Sequential():add(nn.ReLU(true)):add(nn.Linear(opt.embSize,opt.nClasses))
+  end
   middleBlock:add(classificationBlock)
-  middleBlock:add(nn.Identity())
-  middleBlock:add(nn.Identity())
+  -- Pair module
+  middleBlock:add(nn.Identity()) -- pairs
+  -- Triplet module
+  tripletSampling = nn.Identity()
+  if config.TripletLoss then
+    tripletSampling = nn.TripletSampling(opt,opt.TripletSampling)
+  end
+  middleBlock:add(nn.Sequential():add(nn.Normalize(2)):add(tripletSampling))
+
   return middleBlock:float()
 end
 
@@ -107,10 +80,20 @@ end
 function M.critertionSetup(opt)
   local criterionsBlock = nn.ParallelCriterionS(true)
   criterionsBlock:add(nn.EmptyCriterion(), 1.0)
-  classificationCriterion = nn.CrossEntropyCriterion()
-  criterionsBlock:add(classificationCriterion, 1.0)
+  -- Classification module
+  classificationCriterion = nn.EmptyCriterion()
+  if config.SoftMaxLoss then
+   classificationCriterion = nn.CrossEntropyCriterion()
+  end
+  criterionsBlock:add(classificationCriterion, config.SoftMaxLossWeight)
+  -- Pair module
   criterionsBlock:add(nn.EmptyCriterion(), 1.0)
-  criterionsBlock:add(nn.EmptyCriterion(), 1.0)
+  -- Triplet module
+  tripletCriterion = nn.EmptyCriterion()
+  if config.TripletLoss then
+   tripletCriterion = nn.TripletEmbeddingCriterion(opt.alpha)
+  end
+  criterionsBlock:add(tripletCriterion, config.TripletLossWeight)
   return criterionsBlock:float()
 end  
 

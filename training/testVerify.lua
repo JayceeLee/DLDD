@@ -1,15 +1,16 @@
 -- Verification Tester for model using Hold-Out Verification set
+require 'nn'
 local ffi = require 'ffi'
 local utils = require 'utils'
-testLogger = optim.Logger(paths.concat(opt.save, 'test.log'))
+testLogger = optim.Logger(paths.concat(opt.save, 'testVer.log'))
 local confusion = optim.ConfusionMatrix(2)
-require 'nn'
+
 
 local M = {}
 local Test       = torch.class('dddl.Test', M)
 local normalizer = nn.Normalize(2):float()
 local timer = torch.Timer()
-if opt.nClasses ~= 0 then
+if config.SoftMaxLoss then
   testLoggerAcc = optim.Logger(paths.concat(opt.save, 'testSoft.log'))
   confusionSoft = optim.ConfusionMatrix(opt.nClasses)
   lossSoft      = 0
@@ -34,13 +35,14 @@ function Test:testVerification(dataLoader)
       xlua.progress(n, dataLoader:size())
   end
 
-  if opt.nClasses ~= 0 then
+  if testLoggerAcc then
     confusionSoft:updateValids()
     testLoggerAcc:add{
-      ['avg mAP (Classification set)'] = confusionSoft.totalValid * 100,
+      ['avg mAP  (test set)'] = confusionSoft.totalValid * 100,
+      ['avg loss (test set)'] = lossSoft/dataLoader.epochSize,
    }
-   print(('Epoch [%d] Classification ACC: %.2f\tLoss: %.2f'):format(
-        epoch, confusionSoft.totalValid * 100, lossSoft/dataLoader.epochSize))
+   print(('Classification ACC: %.2f\tLoss: %.2f'):format(
+        confusionSoft.totalValid * 100, lossSoft/dataLoader.epochSize))
   end
 
   
@@ -85,16 +87,17 @@ function Test:repBatch(input, labels, info, allPaths)
   -- labels:size(1) is equal to batchSize except for the last iteration if
   -- the number of images isn't equal to the batch size.
   local n = labels:size(1)
-  local embeddings = model:forward(input)
+  local embeddings = model:forward(input):float()
   cutorch.synchronize()
 
-  if opt.nClasses ~= 0 then
-    local classOutput = classificationBlock:forward(embeddings):float()
+  for i=1,n do self.mapperEmbName[info.indices[i]] = embeddings[i] end
+
+  if testLoggerAcc then
+    local classOutput = classificationBlock:forward(embeddings:cuda()):float()
     confusionSoft:batchAdd(classOutput, labels)
     lossSoft = lossSoft + classificationCriterion:forward(classOutput, labels)
+    embeddings:float()
   end
-  embeddings:float()
-  for i=1,n do self.mapperEmbName[info.indices[i]] = embeddings[i] end
   
 end
  

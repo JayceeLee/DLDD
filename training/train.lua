@@ -12,13 +12,17 @@ local optimState = {
    }
 local optimator = nil 
 
-trainLogger = optim.Logger(paths.concat(opt.save, 'train.log'))
-if opt.nClasses ~= 0 then
+if config.TripletLoss then
+  trainLoggerTriplet = optim.Logger(paths.concat(opt.save, 'trainTriplet.log'))
+end
+if config.SoftMaxLoss then
   trainLoggerAcc = optim.Logger(paths.concat(opt.save, 'trainSoft.log'))
 end
+-- Logger of gradient
+gradientLogger = optim.Logger(paths.concat(opt.save, 'gradient.log'))
 
 local batchNumber
-local triplet_loss
+local triplet_loss, softmax_loss, gradient_soft, gradient_triplets
 local all_time
 local M = {}
 
@@ -29,7 +33,7 @@ function M:train(dataloader)
    batchNumber = 0
    -- init main model
    model = models.modelSetup(model)
-   if opt.nClasses ~= 0 then
+   if config.SoftMaxLos ~= 0 then
         cm = optim.ConfusionMatrix(opt.nClasses, torch.range(1,opt.nClasses))
    end
    optimState.learningRate = self:learningRate(epoch)
@@ -43,8 +47,7 @@ function M:train(dataloader)
    model_middle:training()
 
    local tm = torch.Timer()
-   triplet_loss = 0
-   
+   triplet_loss,softmax_loss, gradient_soft, gradient_triplets = 0, 0, 0, 0
 
    for n, sample in dataloader:run() do
       self:copyInputs(sample)
@@ -52,24 +55,35 @@ function M:train(dataloader)
    end
 
    cutorch.synchronize()
+   softmax_loss = softmax_loss / batchNumber
    triplet_loss = triplet_loss / batchNumber
+   
 
-   trainLogger:add{
-      ['avg triplet loss (train set)'] = triplet_loss,
-   }
-   print(string.format('Epoch: [%d][TRAINING SUMMARY] Total Time(s): %.2f\t'
-                          .. 'average triplet loss (per batch): %.2f\t' 
-			  .. 'LR:: %.5f',
-                       epoch, tm:time().real, triplet_loss, optimState.learningRate))
-   if opt.nClasses ~= 0 then
-    cm:updateValids()
-    print ("Accuracy : " .. cm.totalValid * 100)
-    trainLoggerAcc:add{
-        ['avg mean acc (train set)'] = cm.totalValid * 100,
-      }
+
+   if trainLoggerTriplet then
+     trainLoggerTriplet:add{
+        ['avg triplet loss (train set)'] = triplet_loss,
+     }
+     print(string.format('Average triplet loss (per batch): %.2f', triplet_loss)) 
    end
+  
+   if trainLoggerAcc  then
+      cm:updateValids()
+      print(string.format('Average softmax loss (per batch): %.2f\t Accuracy: %.2f', 
+                         softmax_loss,cm.totalValid * 100))
+       trainLoggerAcc:add{
+            ['avg mean acc (train set)'] = cm.totalValid * 100,
+            ['avg loss     (train set)'] = softmax_loss,
+         }
+   end
+
+   gradientLogger:add{
+        ['avg gradient from SoftMax (train set)'] = gradient_soft / batchNumber,
+	     ['avg gradeint from Triplets(train set)'] = gradient_triplets / batchNumber,
+      }
+   print(string.format('Epoch: [%d][TRAINING SUMMARY] Total Time(s): %.2f\tLR:: %.5f',
+                       epoch, tm:time().real, optimState.learningRate))
    print('\n')
-   print('Time elapsed for All: ' .. all_time .. ' seconds')
    collectgarbage()
 end -- of train()
 
@@ -151,32 +165,32 @@ function M:trainBatch(inputs, target, info)
   end
   
   local numImages = inputs:size(1)
-  local embeddings = self.model:forward(inputs)
+
+  tripletSampling.numPerClass = info.nSamplesPerClass 
+  local embeddings            = self.model:forward(inputs)
   self:toFloat(embeddings)
-  if opt.nClasses ~= 0 then
-    cm:batchAdd(embeddings[2], target)
-  end
   
   self.model:zeroGradParameters()
-  local err     = criterion:forward(embeddings,target)
+  local err     = criterion:forward(embeddings, target)
   local df_do   = criterion:backward(embeddings, target)
+
   self:toCuda(df_do)
   self.model:backward(inputs, df_do)
   self:toFloat(df_do)
-  
+  gradient_soft     = gradient_soft     + classificationBlock.gradInput:abs():sum()
+  gradient_triplets = gradient_triplets + tripletSampling.gradInput:abs():sum()
   local curGrad
   local curParam
   local function fEvalMod()
       return err, self.gradParams
   end
   optimMethod(fEvalMod, self.params, self.originalOptState)
-
   batchNumber = batchNumber + 1
-  print(('Epoch: [%d][%d/%d]\tTime %.3f\ttripErr %.2e'):format(
-        epoch, batchNumber, opt.epochSize, timer:time().real, err[2]))
+  self:logBatch(embeddings, target, err)
+
   all_time = all_time + timer:time().real
   timer:reset()
-  triplet_loss = triplet_loss + err[2]
+
 end
 
 function M:toFloat(data)
@@ -195,6 +209,23 @@ function M:learningRate(epoch)
    -- Training schedule
    local   decay = math.floor((epoch - 1) / opt.LRDecay)
    return opt.LR * math.pow(0.1, decay)
+end
+
+function M:logBatch(embeddings, target,err)
+   if trainLoggerAcc then
+      cm:batchAdd(embeddings[2], target)
+      softmax_loss = softmax_loss + err[2]
+      print(('ClassificationLoss %.2e'):format(err[2]))
+   end
+
+   if trainLoggerTriplet then
+      triplet_loss = triplet_loss + err[4]
+      print(('Triplet Loss : %.2e'):format(err[4]))
+   end
+
+   print(('Epoch: [%d][%d/%d]\tTime %.3f'):format(
+        epoch, batchNumber, opt.epochSize, timer:time().real))
+
 end
 
 return M

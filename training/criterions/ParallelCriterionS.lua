@@ -27,11 +27,13 @@ function ParallelCriterionS:updateOutput(input, target)
 end
 
 function ParallelCriterionS:updateGradInput(input, target)
-   self.gradInput = nn.utils.recursiveResizeAs(self.gradInput, input)
-   nn.utils.recursiveFill(self.gradInput, 0)
+   self.gradInput = {} --nn.utils.recursiveResizeAs(self.gradInput, input)
+   --nn.utils.recursiveFill(self.gradInput, 0)
    for i,criterion in ipairs(self.criterions) do
       local target = self.repeatTarget and target or target[i]
-      nn.utils.recursiveAdd(self.gradInput[i], self.weights[i], criterion:updateGradInput(input[i], target))
+      --nn.utils.recursiveAdd(self.gradInput[i], self.weights[i], criterion:updateGradInput(input[i], target))
+      local s = criterion:updateGradInput(input[i], target)
+      self.gradInput[i] = criterion:updateGradInput(input[i], target):mul(self.weights[i])
    end
    return self.gradInput
 end

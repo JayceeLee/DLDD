@@ -21,12 +21,16 @@ end
 if config.CenterLoss then
   trainLoggerCenter = optim.Logger(paths.concat(opt.save, 'trainCenter.log'))
 end
+if config.ConstrastiveLoss then
+  trainLoggerConstrastive = optim.Logger(paths.concat(opt.save, 'trainConstrastiver.log'))
+end
+
 
 -- Logger of gradient
 gradientLogger = optim.Logger(paths.concat(opt.save, 'gradient.log'))
 
 local batchNumber
-local triplet_loss, center_loss, softmax_loss, gradient_soft, gradient_center, gradient_triplets
+local triplet_loss, center_loss, softmax_loss, constrastive_loss, gradient_soft, gradient_center, gradient_triplets, gradient_constrastive
 local all_time
 local M = {}
 
@@ -51,7 +55,7 @@ function M:train(dataloader)
    model_middle:training()
 
    local tm = torch.Timer()
-   center_loss, triplet_loss, softmax_loss, gradient_soft, gradient_center, gradient_triplets = 0, 0, 0, 0, 0, 0
+   center_loss, triplet_loss, softmax_loss, constrastive_loss, gradient_soft, gradient_center, gradient_triplets, gradient_constrastive = 0, 0, 0, 0, 0, 0, 0, 0
    
    for n, sample in dataloader:run() do
       self:copyInputs(sample)
@@ -91,12 +95,19 @@ function M:train(dataloader)
      }
      print(string.format('Average center loss (per batch): %.2f', center_loss))
    end
+   
+   if trainLoggerConstrastive then
+     trainLoggerConstrastive:add{
+        ['avg Constrastive loss (train set)'] = constrastive_loss,
+     }
+     print(string.format('Average Constrastive loss (per batch): %.2f', constrastive_loss))
+   end
 
    gradientLogger:add{
         ['avg gradient from SoftMax (train set)'] = gradient_soft / batchNumber,
         ['avg gradeint from Triplets(train set)'] = gradient_triplets / batchNumber,
 	['avg gradeint from Center  (train set)'] = gradient_center / batchNumber,
-	
+	['avg gradeint from Constrastive  (train set)'] = gradient_constrastive / batchNumber,
       }
    print(string.format('Epoch: [%d][TRAINING SUMMARY] Total Time(s): %.2f\tLR:: %.5f',
                        epoch, tm:time().real, optimState.learningRate))
@@ -184,6 +195,7 @@ function M:trainBatch(inputs, target, info)
   local numImages = inputs:size(1)
 
   tripletSampling.numPerClass = info.nSamplesPerClass 
+  pairSampling.numPerClass = info.nSamplesPerClass
   local embeddings            = self.model:forward(inputs)
   self:toFloat(embeddings)
   
@@ -197,6 +209,7 @@ function M:trainBatch(inputs, target, info)
   gradient_center   = gradient_center   + centerLoss.gradInput:abs():sum()
   gradient_soft     = gradient_soft     + classificationBlock.gradInput:abs():sum()
   gradient_triplets = gradient_triplets + tripletSampling.gradInput:abs():sum()
+  gradient_constrastive = gradient_constrastive + pairSampling.gradInput:abs():sum()
   local curGrad
   local curParam
   local function fEvalMod()
@@ -214,7 +227,11 @@ end
 
 function M:toFloat(data)
   for key,value in pairs(data) do
-    data[key] = value:float()
+    if (type(value) == "table") then
+      data[key] = {value[1]:float(), value[2]:float()}
+    else  
+      data[key] = value:float()
+    end
   end
 end
 
@@ -231,22 +248,28 @@ function M:learningRate(epoch)
 end
 
 function M:logBatch(embeddings, target,err)
+
+   if trainLoggerCenter then
+      center_loss = center_loss + err[1]
+      print(('Center Loss : %.2e'):format(err[1]))
+   end
+   
    if trainLoggerAcc then
       cm:batchAdd(embeddings[2], target)
       softmax_loss = softmax_loss + err[2]
-      print(('ClassificationLoss %.2e'):format(err[2]))
+      print(('Classification Loss %.2e'):format(err[2]))
    end
-
+   
+   if trainLoggerConstrastive then
+     constrastive_loss = constrastive_loss + err[3]
+     print(('Constrastive Loss %.2e'):format(err[3]))
+   end
+   
    if trainLoggerTriplet then
       triplet_loss = triplet_loss + err[4]
       print(('Triplet Loss : %.2e'):format(err[4]))
    end
    
-   if trainLoggerCenter then
-      center_loss = center_loss + err[1]
-      print(('Center Loss : %.2e'):format(err[1]))
-   end
-
    print(('Epoch: [%d][%d/%d]\tTime %.3f'):format(
         epoch, batchNumber, opt.epochSize, timer:time().real))
 end

@@ -13,9 +13,11 @@ end
 paths.dofile('criterions/TripletEmbedding.lua')
 paths.dofile('criterions/ParallelCriterionS.lua')
 paths.dofile('criterions/CenterCriterion.lua')
+paths.dofile('criterions/ContrastiveCriterion.lua')
 paths.dofile('criterions/EmptyCriterion.lua')
 
 paths.dofile('middleBlock/TripletSampling.lua')
+paths.dofile('middleBlock/PairSampling.lua')
 
 local M = {}
 
@@ -67,7 +69,11 @@ function M.middleBlockSetup(opt)
   end
   middleBlock:add(classificationBlock)
   -- Pair module
-  middleBlock:add(nn.Identity()) -- pairs
+  pairSampling = nn.Identity()
+  if config.ConstrastiveLoss then
+    pairSampling = nn.PairSampling(opt, config.PairSampling)
+  end
+  middleBlock:add(pairSampling) -- pairs
   -- Triplet module
   tripletSampling = nn.Identity()
   if config.TripletLoss then
@@ -94,7 +100,11 @@ function M.critertionSetup(opt)
   end
   criterionsBlock:add(classificationCriterion, config.SoftMaxLossWeight)
   -- Pair module
-  criterionsBlock:add(nn.EmptyCriterion(), 1.0)
+  pairCriterion = nn.EmptyCriterion()
+  if config.ConstrastiveLoss then
+   pairCriterion = nn.ContrastiveCriterion(config.ConstrastiveLossMargin)
+  end
+  criterionsBlock:add(pairCriterion, config.ConstrastiveLossWeight)
   -- Triplet module
   tripletCriterion = nn.EmptyCriterion()
   if config.TripletLoss then

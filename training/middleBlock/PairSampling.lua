@@ -1,37 +1,36 @@
 require 'torchx' --for concetration the table of tensors
 local metrics = require 'metrics' --calculate Distance Matrix
 
-local TripletSampling, parent = torch.class('nn.TripletSampling', 'nn.Module')
+local PairSampling, parent = torch.class('nn.PairSampling', 'nn.Module')
 
---TODO: test if averaging the gradient output according to number of all triplets/triplets in constrains make any difference
---      currentyl even 1 triplet generate a lot of gradient (which maybe a noise too)
 
-function TripletSampling:__init(opt, typeSampling)
+
+function PairSampling:__init(opt, typeSampling)
    self.alpha          = opt.alpha -- margin within which the triplets schould be choosen
    self.peoplePerBatch = opt.peoplePerBatch
    self.embSize        = opt.embSize
    self.numPerClass    = {}
    self.sample         = self.sampleWithConstraints
    if typeSampling == 'random' then
-    self.sample         = self.randomTriplets
+    self.sample         = self.randomPairs
    end
    self.skipBatch       = false
 end
 
-function TripletSampling:updateOutput(input)
-  self.tripletIdx = {}
+function PairSampling:updateOutput(input)
+  self.pairIdx = {}
   return self:sample(input)
 end
 
-function TripletSampling:sampleWithConstraints(input)
+function PairSampling:sampleWithConstraints(input)
   self.skipBatch = false
   local as_table = {}
-  local ps_table = {}
-  local ns_table = {}
+  local sc_table = {}
+  local target   = {}
   
-  local tripIdx     = 1
+  local pairIdx     = 1
   local embStartIdx = 1
-  self.numTrips    = 0
+  local numPair    = 0
   -- Calculate Distance Matrix and use it for choosing positive and Negative examples
   local distMat = metrics.distancesL2(input,input):float()
   for i = 1,self.peoplePerBatch do
@@ -54,39 +53,43 @@ function TripletSampling:sampleWithConstraints(input)
           selNegIdx = allNeg[math.random (allNeg:size(1))][1]
           -- Add the embeding of each example.
           table.insert(as_table,input[aIdx]:float())
-          table.insert(ps_table,input[pIdx]:float())
-          table.insert(ns_table,input[selNegIdx]:float())
-          -- Add the original index of triplets.
-          table.insert(self.tripletIdx, {aIdx,pIdx,selNegIdx})
-          tripIdx = tripIdx + 1
+          table.insert(sc_table,input[pIdx]:float())
+	  table.insert(as_table,input[aIdx]:float())
+          table.insert(sc_table,input[selNegIdx]:float())
+           -- Add the original index of pairs.
+	  table.insert(self.pairIdx, {aIdx,pIdx})
+	  table.insert(self.pairIdx, {aIdx,selNegIdx})
+	  -- Add target as positive and negative pair
+	  table.insert(target, 2)
+	  table.insert(target, 1)
+          pairIdx = pairIdx + 1
         end
-        self.numTrips = self.numTrips + 1
+        numPair = numPair + 1
       end
       local aIdx = embStartIdx + n - 1
     end
     embStartIdx = embStartIdx + n
   end
   assert(embStartIdx - 1 == input:size(1))
-  local nTripsFound = table.getn(as_table)
-  print(('  + (nTrips, nTripsFound) = (%d, %d)'):format(self.numTrips, nTripsFound))
-  if nTripsFound == 0 then
-     print("Warning: nTripsFound == 0. Skipping batch.")
-     -- Set output of a=0, p=0, and n=very larnge. We want to |a-p| + alpha (~0.2) < |a-n|.
-     -- So after setting '0' we have: alpha < |n|
-     self.output = torch.Tensor(3, 1, self.embSize):zero()
-     self.output[{{3},{1}}]:fill(1000)
+  local nPairFound = table.getn(as_table)
+  print(('  + (nTrips, nTripsFound) = (%d, %d)'):format(numPair, nPairFound))
+  if nPairFound == 0 then
+     print("Warning: nPairFound == 0. Skipping batch.")
+     -- Set output of a=0, p=0,  |a-p| = 0
+     self.output = torch.Tensor(2, 1, self.embSize):zero()
+     table.insert(target, 2)
      self.skipBatch = true
      return self.output
   end
 
-  self.output = self:concatOutput({as_table, ps_table, ns_table})
-  return self.output
+  self.output = self:concatOutput({as_table, ps_table, sc_table})
+  return {self.output, torch.Tensor(target)}
 end
 
-function TripletSampling:randomTriplets(input)
+function PairSampling:randomPairs(input)
   local as_table = {}
-  local ps_table = {}
-  local ns_table = {}
+  local sc_table = {}
+  local target   = {}
 
   local embStartIdx = 1
   for i = 1,self.peoplePerBatch do
@@ -100,11 +103,16 @@ function TripletSampling:randomTriplets(input)
         
 	selNegIdx = negIdx[math.random (negIdx:size(1))]
 	-- Add the embeding of each example.
-	table.insert(as_table,input[aIdx]:float())
-	table.insert(ps_table,input[pIdx]:float())
-	table.insert(ns_table,input[selNegIdx]:float())
-	-- Add the original index of triplets.
-	table.insert(self.tripletIdx, {aIdx,pIdx,selNegIdx})
+	table.insert(as_table,input[aIdx]:float()) -- postive pair
+	table.insert(sc_table,input[pIdx]:float())
+	table.insert(as_table,input[aIdx]:float()) -- negative pair
+	table.insert(sc_table,input[selNegIdx]:float())
+	-- Add the original index of pairs.
+	table.insert(self.pairIdx, {aIdx,pIdx})
+	table.insert(self.pairIdx, {aIdx,selNegIdx})
+	-- Add target as positive and negative pair
+	table.insert(target, 2)
+	table.insert(target, 1)
       end
       local aIdx = embStartIdx + n - 1
     end
@@ -112,19 +120,18 @@ function TripletSampling:randomTriplets(input)
   end
   assert(embStartIdx - 1 == input:size(1))
 
-  self.output = self:concatOutput({as_table, ps_table, ns_table})
-  return self.output
+  self.output = self:concatOutput({as_table, sc_table})
+  return {self.output, torch.Tensor(target)}
 end
 
-function TripletSampling:concatOutput(dataTable)
-  local nTripsFound = table.getn(dataTable[1])
-  dataTable[1] = torch.concat(dataTable[1]):view(nTripsFound, self.embSize)
-  dataTable[2] = torch.concat(dataTable[2]):view(nTripsFound, self.embSize)
-  dataTable[3] = torch.concat(dataTable[3]):view(nTripsFound, self.embSize)
-  return torch.concat(dataTable):view(3, nTripsFound, self.embSize)
+function PairSampling:concatOutput(dataTable)
+  local nPairsFound = table.getn(dataTable[1])
+  dataTable[1] = torch.concat(dataTable[1]):view(nPairsFound, self.embSize)
+  dataTable[2] = torch.concat(dataTable[2]):view(nPairsFound, self.embSize)
+  return torch.concat(dataTable):view(2, nPairsFound, self.embSize)
 end
 
-function TripletSampling:updateGradInput(input, gradOutput)
+function PairSampling:updateGradInput(input, gradOutput)
    --map gradient to the index of input
   self.gradInput = torch.Tensor(input:size(1),input:size(2)):type(input:type())
   self.gradInput:zero()
@@ -132,13 +139,11 @@ function TripletSampling:updateGradInput(input, gradOutput)
     return self.gradInput
   end
   --get all gradient for each example
-  for i=1,table.getn(self.tripletIdx) do
-      self.gradInput[self.tripletIdx[i][1]]:add(gradOutput[1][i])
-      self.gradInput[self.tripletIdx[i][2]]:add(gradOutput[2][i])
-      self.gradInput[self.tripletIdx[i][3]]:add(gradOutput[3][i])
+  for i=1,table.getn(self.pairIdx) do
+      self.gradInput[self.pairIdx[i][1]]:add(gradOutput[1][i])
+      self.gradInput[self.pairIdx[i][2]]:add(gradOutput[2][i])
   end
-  -- Averege gradient from all triplets
-  self.gradInput = self.gradInput / self.numTrips
+  -- Averege gradient per number of pairs?
   return self.gradInput
 end
 

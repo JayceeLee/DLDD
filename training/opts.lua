@@ -27,6 +27,7 @@ function M.parse(arg)
    cmd:option('-dataset',    'imageData', 'Options: imageData | fileData')
    cmd:option('-data', '', 'Home of dataset. Images separated by identity or two hdf5 files')
    cmd:option('-cache', paths.concat(script_path(), 'work'), 'Directory to cache experiments and data.')
+   cmd:option('-name', '', 'Name of experiment')
    cmd:option('-save', '', 'Directory to save experiment.')
    cmd:option('-nClasses',         0,      'Number of classes in the dataset')
    cmd:option('-samplePeople',  'grouped', 'Sample people using peoplePerBatch and imagesPerPerson, grouped or cluster')
@@ -49,7 +50,7 @@ function M.parse(arg)
    ---------- Model options ----------------------------------
    cmd:option('-retrain', 'none', 'provide path to model to retrain with')
    cmd:option('-modelDef', 'models/pnnet.lua', 'path to model definiton')
-   cmd:option('-imgDim', 28, 'Image dimension. nn2=224, nn4=96')
+   cmd:option('-imgDim', 28, 'Image dimension')
    cmd:option('-embSize', 128, 'size of embedding from model')
    cmd:option('-alpha', 0.2, 'margin in TripletLoss')
    cmd:text()
@@ -59,7 +60,7 @@ function M.parse(arg)
    os.execute('mkdir -p ' .. opt.cache)
 
    if opt.save == '' then
-      opt.save = paths.concat(opt.cache, os.date("%Y-%m-%d_%H-%M-%S"))
+      opt.save = paths.concat(opt.cache, opt.name .. "_" .. os.date("%Y-%m-%d_%H-%M-%S"))
    end
    os.execute('mkdir -p ' .. opt.save)
 

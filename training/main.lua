@@ -12,12 +12,16 @@ opt = opts.parse(arg)
 print(opt)
 
 config = {
-  SoftMaxLoss = true,
+  SoftMaxLoss = false,
   SoftMaxLossWeight = 1.0,
   CenterLoss = false,
   CenterLossWeight = 0.1,
-  TripletLoss = true,
-  TripletLossWeight = 0.3,
+  ConstrastiveLoss = true,
+  ConstrastiveLossWeight = 0.5,
+  ConstrastiveLossMargin = 'auto',
+  PairSampling  = 'random',
+  TripletLoss = false,
+  TripletLossWeight = 1.0,
   TripletSampling = 'semi-hard' --'random'
 }
 

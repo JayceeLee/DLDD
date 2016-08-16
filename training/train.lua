@@ -18,11 +18,15 @@ end
 if config.SoftMaxLoss then
   trainLoggerAcc = optim.Logger(paths.concat(opt.save, 'trainSoft.log'))
 end
+if config.CenterLoss then
+  trainLoggerCenter = optim.Logger(paths.concat(opt.save, 'trainCenter.log'))
+end
+
 -- Logger of gradient
 gradientLogger = optim.Logger(paths.concat(opt.save, 'gradient.log'))
 
 local batchNumber
-local triplet_loss, softmax_loss, gradient_soft, gradient_triplets
+local triplet_loss, center_loss, softmax_loss, gradient_soft, gradient_center, gradient_triplets
 local all_time
 local M = {}
 
@@ -47,17 +51,21 @@ function M:train(dataloader)
    model_middle:training()
 
    local tm = torch.Timer()
-   triplet_loss,softmax_loss, gradient_soft, gradient_triplets = 0, 0, 0, 0
-
+   center_loss, triplet_loss, softmax_loss, gradient_soft, gradient_center, gradient_triplets = 0, 0, 0, 0, 0, 0
+   
    for n, sample in dataloader:run() do
       self:copyInputs(sample)
       self:trainBatch(self.input, self.target, self.info)
+      dataloader.clusterCenters = clusterCenters -- update cluster Centers
+      if config.CenterLoss then -- update cluster center in loss function
+	centerLoss.clusterCenters = clusterCenters
+      end
    end
 
    cutorch.synchronize()
    softmax_loss = softmax_loss / batchNumber
    triplet_loss = triplet_loss / batchNumber
-   
+   center_loss = center_loss  / batchNumber
 
 
    if trainLoggerTriplet then
@@ -72,14 +80,23 @@ function M:train(dataloader)
       print(string.format('Average softmax loss (per batch): %.2f\t Accuracy: %.2f', 
                          softmax_loss,cm.totalValid * 100))
        trainLoggerAcc:add{
-            ['avg mean acc (train set)'] = cm.totalValid * 100,
-            ['avg loss     (train set)'] = softmax_loss,
+            ['avg mAP  (train set)'] = cm.totalValid * 100,
+            ['avg loss (train set)'] = softmax_loss,
          }
+   end
+   
+   if trainLoggerCenter then
+     trainLoggerCenter:add{
+        ['avg center loss (train set)'] = center_loss,
+     }
+     print(string.format('Average center loss (per batch): %.2f', center_loss))
    end
 
    gradientLogger:add{
         ['avg gradient from SoftMax (train set)'] = gradient_soft / batchNumber,
-	     ['avg gradeint from Triplets(train set)'] = gradient_triplets / batchNumber,
+        ['avg gradeint from Triplets(train set)'] = gradient_triplets / batchNumber,
+	['avg gradeint from Center  (train set)'] = gradient_center / batchNumber,
+	
       }
    print(string.format('Epoch: [%d][TRAINING SUMMARY] Total Time(s): %.2f\tLR:: %.5f',
                        epoch, tm:time().real, optimState.learningRate))
@@ -177,6 +194,7 @@ function M:trainBatch(inputs, target, info)
   self:toCuda(df_do)
   self.model:backward(inputs, df_do)
   self:toFloat(df_do)
+  gradient_center   = gradient_center   + centerLoss.gradInput:abs():sum()
   gradient_soft     = gradient_soft     + classificationBlock.gradInput:abs():sum()
   gradient_triplets = gradient_triplets + tripletSampling.gradInput:abs():sum()
   local curGrad
@@ -187,6 +205,7 @@ function M:trainBatch(inputs, target, info)
   optimMethod(fEvalMod, self.params, self.originalOptState)
   batchNumber = batchNumber + 1
   self:logBatch(embeddings, target, err)
+  self:updateClusters(embeddings, target, info)
 
   all_time = all_time + timer:time().real
   timer:reset()
@@ -222,10 +241,29 @@ function M:logBatch(embeddings, target,err)
       triplet_loss = triplet_loss + err[4]
       print(('Triplet Loss : %.2e'):format(err[4]))
    end
+   
+   if trainLoggerCenter then
+      center_loss = center_loss + err[1]
+      print(('Center Loss : %.2e'):format(err[1]))
+   end
 
    print(('Epoch: [%d][%d/%d]\tTime %.3f'):format(
         epoch, batchNumber, opt.epochSize, timer:time().real))
-
 end
+
+-- Based on paper "A Discriminative Feature Learning Approach for Deep Face Recognition",Yandong Wen, Kaipeng Zhang, Zhifeng Li and Yu Qiao
+function M:updateClusters( embeddings, target, info )
+   -- Get embeding for each class independent
+   local clusterUpdate = torch.FloatTensor(opt.peoplePerBatch, opt.embSize)
+   local startIdx      = 1
+   for i=1,opt.peoplePerBatch do
+      local embClass = embeddings[1][{{startIdx,startIdx + info.nSamplesPerClass[i]-1},{}}]
+      local mean     = torch.repeatTensor(clusterCenters[target[startIdx]],embClass:size(1),1):csub(embClass):mean(1)
+      clusterCenters[target[startIdx]] = clusterCenters[target[startIdx]] - opt.clusterLR * mean
+      startIdx = startIdx + info.nSamplesPerClass[i]
+   end
+end
+
+
 
 return M

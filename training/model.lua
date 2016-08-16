@@ -12,7 +12,9 @@ if opt.cudnn then
 end
 paths.dofile('criterions/TripletEmbedding.lua')
 paths.dofile('criterions/ParallelCriterionS.lua')
+paths.dofile('criterions/CenterCriterion.lua')
 paths.dofile('criterions/EmptyCriterion.lua')
+
 paths.dofile('middleBlock/TripletSampling.lua')
 
 local M = {}
@@ -79,7 +81,12 @@ end
 -- define all criterions
 function M.critertionSetup(opt)
   local criterionsBlock = nn.ParallelCriterionS(true)
-  criterionsBlock:add(nn.EmptyCriterion(), 1.0)
+  -- Center Loss
+  centerLoss = nn.EmptyCriterion()
+  if config.CenterLoss then
+    centerLoss  = nn.CenterCriterion(clusterCenters)
+  end
+  criterionsBlock:add(centerLoss, config.CenterLossWeight)
   -- Classification module
   classificationCriterion = nn.EmptyCriterion()
   if config.SoftMaxLoss then

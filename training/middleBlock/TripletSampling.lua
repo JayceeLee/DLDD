@@ -67,7 +67,7 @@ function TripletSampling:sampleWithConstraints(input)
   print(('  + (nTrips, nTripsFound) = (%d, %d)'):format(numTrips, nTripsFound))
   if nTripsFound == 0 then
      print("Warning: nTripsFound == 0. Skipping batch.")
-     self.output = torch.Tensor(3, 0, self.embSize)
+     self.output = torch.Tensor(3, 1, self.embSize):zero()
      return self.output
   end
 

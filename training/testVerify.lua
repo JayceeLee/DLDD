@@ -5,16 +5,19 @@ local utils = require 'utils'
 testLogger = optim.Logger(paths.concat(opt.save, 'testVer.log'))
 local confusion = optim.ConfusionMatrix(2)
 
-
 local M = {}
 local Test       = torch.class('dddl.Test', M)
 local normalizer = nn.Normalize(2):float()
 local timer = torch.Timer()
 if config.SoftMaxLoss then
-  testLoggerAcc = optim.Logger(paths.concat(opt.save, 'testSoft.log'))
-  confusionSoft = optim.ConfusionMatrix(opt.nClasses)
-  lossSoft      = 0
+  local testLoggerAcc = optim.Logger(paths.concat(opt.save, 'testSoft.log'))
+  local confusionSoft = optim.ConfusionMatrix(opt.nClasses)
+  local lossSoft      = 0
 end
+
+local testLoggerStdDev = optim.Logger(paths.concat(opt.save, 'testStdCenter.log'))
+local stdDev = 0
+
 function Test:test(dataLoader)
   print('==> doing epoch on Verification Set:')
   print("==> online epoch # " .. epoch) 
@@ -67,6 +70,10 @@ function Test:testVerification(dataLoader)
   testLogger:add{
       ['avg mAP (Verification set)'] = best_acc
    }
+  testLoggerStdDev:add{
+      ['stdDev (Test set)'] = math.sqrt(stdDev / dataLoader:size())
+   }
+   
   timer:reset()
 end
   
@@ -86,17 +93,25 @@ end
 function Test:repBatch(input, labels, info, allPaths)
   -- labels:size(1) is equal to batchSize except for the last iteration if
   -- the number of images isn't equal to the batch size.
-  local n = labels:size(1)
+  local N = labels:size(1)
   local embeddings = model:forward(input):float()
   cutorch.synchronize()
 
-  for i=1,n do self.mapperEmbName[info.indices[i]] = embeddings[i] end
+  for i=1,N do self.mapperEmbName[info.indices[i]] = embeddings[i] end
 
   if testLoggerAcc then
     local classOutput = classificationBlock:forward(embeddings:cuda()):float()
     confusionSoft:batchAdd(classOutput, labels)
     lossSoft = lossSoft + classificationCriterion:forward(classOutput, labels)
     embeddings:float()
+  end
+  
+  if testLoggerStdDev then
+    local stdDiff = torch.FloatTensor(N)
+    for i=1,N do
+      stdDiff[i] = (embeddings[i] - clusterCenters[labels[i]]):pow(2):sum() / embeddings:size(2)
+    end
+    stdDev = stdDev + stdDiff:sum()/N
   end
   
 end
@@ -128,6 +143,7 @@ function Test:evalThresholdAccuracy(distances, same_info, threshold )
   confusion:updateValids()
   return confusion.totalValid
 end 
+
 
 return M.Test
 

@@ -1,9 +1,10 @@
 
 local image = require 'image'
 local paths = require 'paths'
-local t = require 'datasets/transforms'
 local ffi = require 'ffi'
+local metrics = require 'metrics' --calculate Distance Matrix
 local utils = require '../utils'
+local t = require 'datasets/transforms'
 local M = {}
 local ImageData = torch.class('dldd.ImageData', M)
 
@@ -79,10 +80,56 @@ function ImageData:sampleImages(info)
   return info.indices, {}
 end
 
-function ImageData:samplePeople(info)
+function ImageData:sampleImagesGrouped(info)
 
    local classes = torch.randperm(#self.classList)[{{1,info.peoplePerBatch}}]:int()
    local nSamplesPerClass = torch.Tensor(info.peoplePerBatch)
+   for i=1,info.peoplePerBatch do
+      local nSample = math.min(self.imageInfo.classSample[classes[i]]:nElement(), info.imagesPerPerson)
+      nSamplesPerClass[i] = nSample
+   end
+
+   local data = torch.Tensor(nSamplesPerClass:sum())
+   local targets = torch.Tensor(nSamplesPerClass:sum())
+   local dataIdx = 1
+   for i=1,info.peoplePerBatch do
+      local cls = classes[i]
+      local nSamples = nSamplesPerClass[i]
+      local nTotal = self.imageInfo.classSample[classes[i]]:nElement()
+      if (nTotal) == 0 then 
+         print "zero"
+         print(classes[i])
+         print(self.classList[classes[i]])
+         print(self.imageInfo.classSample[classes[i]])
+      end
+      local shuffle = torch.randperm(nTotal)
+      for j = 1, nSamples do
+         data[dataIdx] = self.imageInfo.classSample[cls][shuffle[j]]
+         targets[dataIdx] = cls
+         dataIdx = dataIdx + 1
+      end
+   end
+   assert(dataIdx - 1 == nSamplesPerClass:sum())
+   local infoSampling = {}
+   infoSampling.nSamplesPerClass = nSamplesPerClass
+   return data, infoSampling
+end
+
+-- TODO: add some random classes to have not only hard classes
+function ImageData:sampleImagesFromClusters(info)
+   -- Get random class
+   local anchorClass      = torch.randperm(#self.classList)[{{1}}]:int()
+   local nSamplesPerClass = torch.Tensor(info.peoplePerBatch)
+   local clusterCenter    = info.clusterCenters[anchorClass[1]]:view(1, self.opt.embSize)
+   -- Get classes close to anchorClass
+   local _,classes        = metrics.distancesL2(clusterCenter,info.clusterCenters):float():topk(info.peoplePerBatch)
+
+   -- print(idx:index(1, torch.randperm(idx:size(2)):long()))
+   -- local idx              = idx:index(1, torch.randperm(idx:size(1)):long())[{{2,info.peoplePerBatch}}]:int()
+   -- local classes          = torch.Tensor(info.peoplePerBatch)
+   -- classes[1] = anchorClass
+   -- classes[{{2,info.peoplePerBatch}}] = idx
+   classes = torch.squeeze(classes)
    for i=1,info.peoplePerBatch do
       local nSample = math.min(self.imageInfo.classSample[classes[i]]:nElement(), info.imagesPerPerson)
       nSamplesPerClass[i] = nSample

@@ -12,7 +12,7 @@ function createModel()
   model:add(nn.Tanh(true))
   model:add(nn.View(64*6*6))
   model:add(nn.Linear(64*6*6, opt.embSize))
-  model:add(nn.Tanh(true))
+--   model:add(nn.Tanh(true))
   
   return model
 end

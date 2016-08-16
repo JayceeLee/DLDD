@@ -12,12 +12,15 @@ opt = opts.parse(arg)
 print(opt)
 
 config = {
-  SoftMaxLoss = false,
+  SoftMaxLoss = true,
   SoftMaxLossWeight = 1.0,
-  TripletLoss = true,	
-  TripletLossWeight = 0.1,
+  CenterLoss = false,
+  CenterLossWeight = 0.1,
+  TripletLoss = true,
+  TripletLossWeight = 0.3,
   TripletSampling = 'semi-hard' --'random'
 }
+
 
 if opt.cuda then
    require 'cutorch'
@@ -31,7 +34,8 @@ torch.setdefaulttensortype('torch.FloatTensor')
 torch.manualSeed(opt.manualSeed)
 
 -- Data loading
-local trainLoader, valLoader = DataLoader.create(opt)
+clusterCenters  = torch.rand(opt.nClasses, opt.embSize)
+local trainLoader, valLoader = DataLoader.create(opt, clusterCenters)
 local models = require 'model'
 middleBlock = models.middleBlockSetup(opt)
 criterion   = models.critertionSetup(opt)

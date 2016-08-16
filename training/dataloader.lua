@@ -16,19 +16,19 @@ Threads.serialization('threads.sharedserialize')
 local M = {}
 local DataLoader = torch.class('openface.DataLoader', M)
 
-function DataLoader.create(opt)
+function DataLoader.create(opt, clusterCenters)
    -- The train and val loader
    local loaders = {}
 
    for i, split in ipairs{'train','val'} do
       local dataset = datasets.create(opt, split)
-      loaders[i] = M.DataLoader(dataset, opt, split)
+      loaders[i] = M.DataLoader(dataset, opt, split, clusterCenters)
    end
 
    return table.unpack(loaders)
 end
 
-function DataLoader:__init(dataset, opt, split)
+function DataLoader:__init(dataset, opt, split, clusterCenters)
    local manualSeed = opt.manualSeed
    local function init()
       require('datasets/' .. opt.dataset)
@@ -41,8 +41,10 @@ function DataLoader:__init(dataset, opt, split)
       _G.dataset = dataset
       _G.preprocess = dataset:preprocess()
       if split == 'train' then
-         if opt.samplePeople then
-            _G.dataset.sample = dataset.samplePeople
+         if opt.samplePeople == 'grouped' then
+            _G.dataset.sample = dataset.sampleImagesGrouped
+         elseif opt.samplePeople == 'cluster' then
+            _G.dataset.sample = dataset.sampleImagesFromClusters
          else
             _G.dataset.sample = dataset.sampleImagesRandom
          end
@@ -60,8 +62,10 @@ function DataLoader:__init(dataset, opt, split)
    self.imagesPerPerson = opt.imagesPerPerson 
    if split == 'train' then 
       self.epochSize       = opt.epochSize
-      if opt.samplePeople then
-         self.getInfo = self.infoForSamplingPeople
+      if opt.samplePeople == 'grouped' then
+         self.getInfo = self.infoForSamplingImages
+      elseif opt.samplePeople == 'cluster' then
+         self.getInfo = self.infoForSamplingImagesFromCluster
       else
          self.getInfo = self.infoForRandomExample
       end
@@ -71,6 +75,7 @@ function DataLoader:__init(dataset, opt, split)
    end
    self.opt             = opt    
    self.split           = split
+   self.clusterCenters  = clusterCenters
 end
 
 function DataLoader:size()
@@ -151,10 +156,18 @@ function DataLoader:infoForRandomExample()
    return info
 end
 
-function DataLoader:infoForSamplingPeople()
+function DataLoader:infoForSamplingImages()
    local info = {}
    info.peoplePerBatch = self.peoplePerBatch
    info.imagesPerPerson = self.imagesPerPerson
+   return info
+end
+
+function DataLoader:infoForSamplingImagesFromCluster()
+   local info = {}
+   info.peoplePerBatch  = self.peoplePerBatch
+   info.imagesPerPerson = self.imagesPerPerson
+   info.clusterCenters  = self.clusterCenters
    return info
 end
 

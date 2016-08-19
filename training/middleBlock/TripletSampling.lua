@@ -20,7 +20,7 @@ end
 
 function TripletSampling:updateOutput(input)
   self.tripletIdx = {}
-  return self:sample(input)
+  return self:sample(input:clone():float())
 end
 
 function TripletSampling:sampleWithConstraints(input)
@@ -33,7 +33,7 @@ function TripletSampling:sampleWithConstraints(input)
   local embStartIdx = 1
   self.numTrips    = 0
   -- Calculate Distance Matrix and use it for choosing positive and Negative examples
-  local distMat = metrics.distancesL2(input,input):float()
+  local distMat = metrics.distancesL2(input,input)
   for i = 1,self.peoplePerBatch do
     local n = self.numPerClass[i]
     for j = 1,n-1 do -- For every image in the batch.
@@ -53,9 +53,9 @@ function TripletSampling:sampleWithConstraints(input)
         if #allNeg:size() ~= 0 then
           selNegIdx = allNeg[math.random (allNeg:size(1))][1]
           -- Add the embeding of each example.
-          table.insert(as_table,input[aIdx]:float())
-          table.insert(ps_table,input[pIdx]:float())
-          table.insert(ns_table,input[selNegIdx]:float())
+          table.insert(as_table,input[aIdx])
+          table.insert(ps_table,input[pIdx])
+          table.insert(ns_table,input[selNegIdx])
           -- Add the original index of triplets.
           table.insert(self.tripletIdx, {aIdx,pIdx,selNegIdx})
           tripIdx = tripIdx + 1
@@ -100,9 +100,9 @@ function TripletSampling:randomTriplets(input)
         
 	selNegIdx = negIdx[math.random (negIdx:size(1))]
 	-- Add the embeding of each example.
-	table.insert(as_table,input[aIdx]:float())
-	table.insert(ps_table,input[pIdx]:float())
-	table.insert(ns_table,input[selNegIdx]:float())
+	table.insert(as_table,input[aIdx])
+	table.insert(ps_table,input[pIdx])
+	table.insert(ns_table,input[selNegIdx])
 	-- Add the original index of triplets.
 	table.insert(self.tripletIdx, {aIdx,pIdx,selNegIdx})
       end
@@ -138,7 +138,7 @@ function TripletSampling:updateGradInput(input, gradOutput)
       self.gradInput[self.tripletIdx[i][3]]:add(gradOutput[3][i])
   end
   -- Averege gradient from all triplets
-  self.gradInput = self.gradInput / self.numTrips
+  self.gradInput = self.gradInput / input:size(1)
   return self.gradInput
 end
 

@@ -1,10 +1,53 @@
 require 'nn'
 require 'CenterCriterion'
 require 'ContrastiveCriterion'
+require 'GlobalCriterionTriplet'
 
 local mytester = torch.Tester()
 local precision = 1e-5
 local expprecision = 1e-4
+
+local function criterionJacobianTestTriplet(cri, input, idxTriplet)
+   local eps = 1e-6
+   local _ = cri:forward(input)
+   local dfdx = cri:backward(input)
+   
+   -- for each input perturbation, do central difference
+   local centraldiff_dfdx = torch.Tensor():resizeAs(dfdx[idxTriplet])
+   local input_s = input:storage()
+   local centraldiff_dfdx_s = centraldiff_dfdx:storage()
+   local start, stop, diff = 1,input:nElement()/3, 0
+   if idxTriplet == 2 then
+     start = input:nElement()/3 + 1
+     stop  = input:nElement()/3 * 2   
+     diff =  input:nElement()/3 
+   elseif idxTriplet == 3 then
+     start = input:nElement()/3 * 2 + 1
+     stop  = input:nElement()   
+     diff =  input:nElement()/3  * 2
+   end
+   
+   for i=start,stop do
+      -- f(xi + h)
+      input_s[i] = input_s[i] + eps
+      local fx1 = cri:forward(input)
+      -- f(xi - h)
+      input_s[i] = input_s[i] - 2*eps
+      local fx2 = cri:forward(input)
+      -- f'(xi) = (f(xi + h) - f(xi - h)) / 2h
+      local cdfx = (fx1 - fx2) / (2*eps)
+      -- store f' in appropriate place
+      centraldiff_dfdx_s[i-diff] = cdfx
+      -- reset input[i]
+      input_s[i] = input_s[i] + eps
+   end
+
+   -- compare centraldiff_dfdx with :backward()
+   local err = (centraldiff_dfdx - dfdx[idxTriplet]):abs():max()
+   print(centraldiff_dfdx)
+   print(dfdx[idxTriplet])
+   mytester:assertlt(err, precision, 'error in difference between central difference and :backward')
+end
 
 local function criterionJacobianTestPair(cri, input, target, idxPair)
    local eps = 1e-6
@@ -99,8 +142,16 @@ function ContrastiveCriterion()
    criterionJacobianTestPair(cri, input, target, 2)
 end
 
+function GlobalLoss()
+  local numLabels     = 4 --math.random(5,10)
+  local input         = torch.rand(3,numLabels,10)
+  local cri = nn.GlobalCriterionTriplet()
+  criterionJacobianTestTriplet(cri, input,3)
+end
+
 -- CenterCriterion()
-ContrastiveCriterion()
+-- ContrastiveCriterion()
+GlobalLoss()
 
 
 

@@ -11,10 +11,11 @@ if opt.cudnn then
   cudnn.verbose = false
 end
 paths.dofile('criterions/TripletEmbedding.lua')
-paths.dofile('criterions/ParallelCriterionS.lua')
+paths.dofile('criterions/GlobalCriterionTriplet.lua')
 paths.dofile('criterions/CenterCriterion.lua')
 paths.dofile('criterions/ContrastiveCriterion.lua')
 paths.dofile('criterions/EmptyCriterion.lua')
+paths.dofile('criterions/ParallelCriterionS.lua')
 
 paths.dofile('middleBlock/TripletSampling.lua')
 paths.dofile('middleBlock/PairSampling.lua')
@@ -23,13 +24,14 @@ local M = {}
 
 --define a model with embeding layer
 function M.modelSetup(continue)
-  if opt.retrain ~= 'none' then
+
+  if continue then
+    model = continue
+  elseif opt.retrain ~= 'none' then
     assert(paths.filep(opt.retrain), 'File not found: ' .. opt.retrain)
     print('Loading model from file: ' .. opt.retrain);
     model = torch.load(opt.retrain)
     print("Using imgDim = ", opt.imgDim)
-  elseif continue then
-    model = continue
   else
     paths.dofile(opt.modelDef)
     assert(imgDim, "Model definition must set global variable 'imgDim'")
@@ -80,7 +82,11 @@ function M.middleBlockSetup(opt)
     tripletSampling = nn.TripletSampling(opt,opt.TripletSampling)
   end
   middleBlock:add(nn.Sequential():add(nn.Normalize(2)):add(tripletSampling))
-
+  
+  if opt.cudnn then
+    cudnn.convert(middleBlock,cudnn)
+  end
+  
   return middleBlock:float()
 end
 

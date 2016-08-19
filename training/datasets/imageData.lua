@@ -115,7 +115,7 @@ function ImageData:sampleImagesGrouped(info)
    return data, infoSampling
 end
 
--- TODO: add some random classes to have not only hard classes
+-- TODO: add some random classes to have not only hard classes?
 function ImageData:sampleImagesFromClusters(info)
    -- Get random class
    local anchorClass      = torch.randperm(#self.classList)[{{1}}]:int()
@@ -206,7 +206,7 @@ local pca = {
 function ImageData:preprocess()
    if self.split == 'train' then
       return t.Compose{
-         -- t.Scale(self.imgDim),
+         t.Scale(self.imgDim),
          -- t.ColorJitter({
          --    brightness = 0.4,
          --    contrast = 0.4,

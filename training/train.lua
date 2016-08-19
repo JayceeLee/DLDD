@@ -172,6 +172,9 @@ function M:saveModel(model)
    
    torch.save(paths.concat(opt.save, 'model_' .. epoch .. '.t7'),  model:clearState())
    torch.save(paths.concat(opt.save, 'optimState_' .. epoch .. '.t7'), optimState)
+   if config.SoftMaxLoss then
+      torch.save(paths.concat(opt.save, 'model_classification_' .. epoch .. '.t7'),  classificationBlock:clearState())
+   end
   
    if dpt then -- OOM without this
       dpt:clearState()

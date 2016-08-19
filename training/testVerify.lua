@@ -10,9 +10,9 @@ local Test       = torch.class('dddl.Test', M)
 local normalizer = nn.Normalize(2):float()
 local timer = torch.Timer()
 if config.SoftMaxLoss then
-  local testLoggerAcc = optim.Logger(paths.concat(opt.save, 'testSoft.log'))
-  local confusionSoft = optim.ConfusionMatrix(opt.nClasses)
-  local lossSoft      = 0
+  testLoggerAcc = optim.Logger(paths.concat(opt.save, 'testSoft.log'))
+  confusionSoft = optim.ConfusionMatrix(opt.nClasses)
+  lossSoft      = 0
 end
 
 local testLoggerStdDev = optim.Logger(paths.concat(opt.save, 'testStdCenter.log'))
@@ -23,9 +23,7 @@ function Test:test(dataLoader)
   print("==> online epoch # " .. epoch) 
   cutorch.synchronize()
   model:evaluate()
-  timer:reset()
-  self.mapperEmbName = {}
-  lossSoft = 0
+  self:resetLogger()
   self:testVerification(dataLoader)
   collectgarbage()
 end
@@ -64,7 +62,7 @@ function Test:testVerification(dataLoader)
       best_acc   = acc
     end
   end
-  print(('Epoch [%d] Verificatin ACC: %.2f\tBest Thre:s %.2f\tTime(s): %.3f'):format(
+  print(('Epoch [%d] Verificatin ACC: %.2f\tBest Thres: %.2f\tTime(s): %.3f'):format(
         epoch, best_acc, best_thres, timer:time().real))
   print('\n')
   testLogger:add{
@@ -130,20 +128,31 @@ function Test:computeDistances(pairs)
   return distances, pairs[{{},{3}}]
 end
 
+
 function Test:evalThresholdAccuracy(distances, same_info, threshold )
   confusion:zero()
-  for i=1,distances:size(1) do
-    local diff = distances[i]
-    if diff < threshold then
-      confusion:add(2, same_info[i][1])
-    else
-      confusion:add(1, same_info[i][1])
-    end
-  end
+  confusion:batchAdd(distances:lt(threshold):add(1), same_info)
+--   for i=1,distances:size(1) do
+--     local diff = distances[i]
+--     if diff < threshold then
+--       confusion:add(2, same_info[i][1])
+--     else
+--       confusion:add(1, same_info[i][1])
+--     end
+--   end
   confusion:updateValids()
   return confusion.totalValid
 end 
 
+function Test:resetLogger()
+  timer:reset()
+  self.mapperEmbName = {}
+  lossSoft = 0
+  stdDev   = 0
+  if testLoggerAcc then
+    confusionSoft:zero()
+  end
+end
 
 return M.Test
 

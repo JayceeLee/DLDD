@@ -12,19 +12,20 @@ opt = opts.parse(arg)
 print(opt)
 
 config = {
-  SoftMaxLoss = false,
+  SoftMaxLoss = true,
   SoftMaxLossWeight = 1.0,
-  CenterLoss = false,
-  CenterLossWeight = 0.1,
-  ConstrastiveLoss = true,
+  CenterLoss = true,
+  CenterLossWeight = 0.01,
+  ConstrastiveLoss = false,
   ConstrastiveLossWeight = 0.5,
   ConstrastiveLossMargin = 'auto',
   PairSampling  = 'random',
   TripletLoss = false,
   TripletLossWeight = 1.0,
+  GlobalCriterionTriplet = false,
+  GlobalCriterionTriplet = 1.0,
   TripletSampling = 'semi-hard' --'random'
 }
-
 
 if opt.cuda then
    require 'cutorch'

@@ -4,9 +4,9 @@
 
 local CenterCriterion, parent = torch.class('nn.CenterCriterion', 'nn.Criterion')
 
-function CenterCriterion:__init(clusterCenters)
+function CenterCriterion:__init(clusterCenter)
    parent.__init(self)
-   self.clusterCenters = clusterCenters
+   self.clusterCenters = clusterCenter
    self.Li = torch.Tensor()
    self.gradInput = {}
 end

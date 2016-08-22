@@ -2,6 +2,7 @@ require 'nn'
 require 'CenterCriterion'
 require 'ContrastiveCriterion'
 require 'GlobalCriterionTriplet'
+require 'TripletEmbeddingRatioCriterion'
 
 local mytester = torch.Tester()
 local precision = 1e-5
@@ -149,9 +150,17 @@ function GlobalLoss()
   criterionJacobianTestTriplet(cri, input,3)
 end
 
+function TripletEmbeddingRatioCriterion()
+  local numLabels     = math.random(5,10)
+  local input         = torch.rand(3,numLabels,10)
+  local cri = nn.TripletEmbeddingRatioCriterion()
+  criterionJacobianTestTriplet(cri, input,1)
+end
+
 -- CenterCriterion()
 -- ContrastiveCriterion()
-GlobalLoss()
+-- GlobalLoss()
+TripletEmbeddingRatioCriterion()
 
 
 

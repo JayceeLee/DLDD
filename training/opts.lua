@@ -52,9 +52,22 @@ function M.parse(arg)
    cmd:option('-modelDef', 'models/pnnet.lua', 'path to model definiton')
    cmd:option('-imgDim', 28, 'Image dimension')
    cmd:option('-embSize', 128, 'size of embedding from model')
+   ---------- Loss options ---------------
+   ---------- Raw Features module
+   cmd:option('-Center', 0.0, 'CenterLoss')
+   ----------Classification  module
+   cmd:option('-SoftMax', 0.0, 'SoftMax for Classification, need nClasses')
+   ----------Pair module
+   cmd:option('-Constr', 0.0, 'Contrastive Loss')
+   ----------Triplet module
+   cmd:option('-Triplet', 0.0, 'Triplet Loss')
    cmd:option('-alpha', 0.2, 'margin in TripletLoss')
+   cmd:option('-Triratio', 0.0, 'Triplet Embedding-Ratio Criterion')
+   cmd:option('-Global', 0.0, 'Global Criterion Triplet')
    cmd:text()
-
+  
+   
+   
    local opt = cmd:parse(arg or {})
    opt.batchSize = opt.peoplePerBatch * opt.imagesPerPerson
    os.execute('mkdir -p ' .. opt.cache)

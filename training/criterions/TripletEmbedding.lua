@@ -36,6 +36,6 @@ function TripletEmbeddingCriterion:updateGradInput(input)
    self.gradInput[3] = (a - n):cmul(self.Li:gt(0):repeatTensor(1, a:size(2)):type(a:type()) * 2/N)
    
    self.gradInput = torch.concat({self.gradInput[1], self.gradInput[2], self.gradInput[3]}):view(3, N, self.gradInput[1]:size(2))
-
+   
    return self.gradInput
 end

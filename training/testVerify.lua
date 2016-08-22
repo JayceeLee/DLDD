@@ -9,8 +9,8 @@ local M = {}
 local Test       = torch.class('dddl.Test', M)
 local normalizer = nn.Normalize(2):float()
 local timer = torch.Timer()
-if config.SoftMaxLoss then
-  testLoggerAcc = optim.Logger(paths.concat(opt.save, 'testSoft.log'))
+if opt.SoftMax ~= 0 then 
+  testLoggerAcc = optim.Logger(paths.concat(opt.save, 'AccuracyTest.log'))
   confusionSoft = optim.ConfusionMatrix(opt.nClasses)
   lossSoft      = 0
 end
@@ -100,18 +100,16 @@ function Test:repBatch(input, labels, info, allPaths)
   if testLoggerAcc then
     local classOutput = classificationBlock:forward(embeddings:cuda()):float()
     confusionSoft:batchAdd(classOutput, labels)
-    lossSoft = lossSoft + classificationCriterion:forward(classOutput, labels)
+    lossSoft = lossSoft + config.Classification.SoftMax.model:forward(classOutput, labels)
     embeddings:float()
   end
   
-  if testLoggerStdDev then
-    local stdDiff = torch.FloatTensor(N)
-    for i=1,N do
-      stdDiff[i] = (embeddings[i] - clusterCenters[labels[i]]):pow(2):sum() / embeddings:size(2)
-    end
-    stdDev = stdDev + stdDiff:sum()/N
+  -- log stddev of difference between features and cluster center
+  local stdDiff = torch.FloatTensor(N)
+  for i=1,N do
+    stdDiff[i] = (embeddings[i] - clusterCenters[labels[i]]):pow(2):sum() / embeddings:size(2)
   end
-  
+  stdDev = stdDev + stdDiff:sum()/N
 end
  
 function Test:getEmbeddings(pair)
@@ -132,14 +130,6 @@ end
 function Test:evalThresholdAccuracy(distances, same_info, threshold )
   confusion:zero()
   confusion:batchAdd(distances:lt(threshold):add(1), same_info)
---   for i=1,distances:size(1) do
---     local diff = distances[i]
---     if diff < threshold then
---       confusion:add(2, same_info[i][1])
---     else
---       confusion:add(1, same_info[i][1])
---     end
---   end
   confusion:updateValids()
   return confusion.totalValid
 end 

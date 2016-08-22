@@ -1,5 +1,4 @@
 require 'optim'
-local models = require 'model'
 
 local optimMethod = _G.optim[opt.optimization]
 local optimState = {
@@ -12,103 +11,58 @@ local optimState = {
    }
 local optimator = nil 
 
-if config.TripletLoss then
-  trainLoggerTriplet = optim.Logger(paths.concat(opt.save, 'trainTriplet.log'))
+if opt.SoftMax ~= 0 then
+   trainLoggerAcc = optim.Logger(paths.concat(opt.save, 'AccuracyTrain.log'))
 end
-if config.SoftMaxLoss then
-  trainLoggerAcc = optim.Logger(paths.concat(opt.save, 'trainSoft.log'))
-end
-if config.CenterLoss then
-  trainLoggerCenter = optim.Logger(paths.concat(opt.save, 'trainCenter.log'))
-end
-if config.ConstrastiveLoss then
-  trainLoggerConstrastive = optim.Logger(paths.concat(opt.save, 'trainConstrastiver.log'))
-end
-
-
--- Logger of gradient
-gradientLogger = optim.Logger(paths.concat(opt.save, 'gradient.log'))
 
 local batchNumber
-local triplet_loss, center_loss, softmax_loss, constrastive_loss, gradient_soft, gradient_center, gradient_triplets, gradient_constrastive
 local all_time
 local M = {}
 
-function M:train(dataloader)
+function M:train(dataloader, models)
    print('==> doing epoch on training data:')
    print("==> online epoch # " .. epoch)
    all_time = 0
    batchNumber = 0
    -- init main model
-   model = models.modelSetup(model)
-   if config.SoftMaxLos ~= 0 then
+   model = models:modelSetup(model)
+   if trainLoggerAcc then
         cm = optim.ConfusionMatrix(opt.nClasses, torch.range(1,opt.nClasses))
    end
    optimState.learningRate = self:learningRate(epoch)
    -- init model with additional module
-   model_middle = nn.Sequential()
+   local model_middle = nn.Sequential()
    model_middle:add(model):add(middleBlock)
    model_middle:cuda()
    self:initOptim(model_middle, optimState)
-
+    
    cutorch.synchronize()
    model_middle:training()
-
    local tm = torch.Timer()
-   center_loss, triplet_loss, softmax_loss, constrastive_loss, gradient_soft, gradient_center, gradient_triplets, gradient_constrastive = 0, 0, 0, 0, 0, 0, 0, 0
    
    for n, sample in dataloader:run() do
       self:copyInputs(sample)
       self:trainBatch(self.input, self.target, self.info)
       dataloader.clusterCenters = clusterCenters -- update cluster Centers
-      if config.CenterLoss then -- update cluster center in loss function
-	centerLoss.clusterCenters = clusterCenters
+      if opt.Center > 0.0 then -- update cluster center in loss function
+         config.Raw.Center.model.clusterCenters = clusterCenters
       end
    end
 
    cutorch.synchronize()
-   softmax_loss = softmax_loss / batchNumber
-   triplet_loss = triplet_loss / batchNumber
-   center_loss = center_loss  / batchNumber
-
-
-   if trainLoggerTriplet then
-     trainLoggerTriplet:add{
-        ['avg triplet loss (train set)'] = triplet_loss,
-     }
-     print(string.format('Average triplet loss (per batch): %.2f', triplet_loss)) 
+   
+   for name, value in pairs(listActiveCriterion) do
+      value:logData(batchNumber)
    end
-  
-   if trainLoggerAcc  then
+
+   if trainLoggerAcc then
       cm:updateValids()
-      print(string.format('Average softmax loss (per batch): %.2f\t Accuracy: %.2f', 
-                         softmax_loss,cm.totalValid * 100))
-       trainLoggerAcc:add{
-            ['avg mAP  (train set)'] = cm.totalValid * 100,
-            ['avg loss (train set)'] = softmax_loss,
+      print(string.format('Accuracy: %.2f', cm.totalValid * 100))
+      trainLoggerAcc:add{
+            ['avg mAP  (train set)'] = cm.totalValid * 100
          }
    end
-   
-   if trainLoggerCenter then
-     trainLoggerCenter:add{
-        ['avg center loss (train set)'] = center_loss,
-     }
-     print(string.format('Average center loss (per batch): %.2f', center_loss))
-   end
-   
-   if trainLoggerConstrastive then
-     trainLoggerConstrastive:add{
-        ['avg Constrastive loss (train set)'] = constrastive_loss,
-     }
-     print(string.format('Average Constrastive loss (per batch): %.2f', constrastive_loss))
-   end
 
-   gradientLogger:add{
-        ['avg gradient from SoftMax (train set)'] = gradient_soft / batchNumber,
-        ['avg gradeint from Triplets(train set)'] = gradient_triplets / batchNumber,
-	['avg gradeint from Center  (train set)'] = gradient_center / batchNumber,
-	['avg gradeint from Constrastive  (train set)'] = gradient_constrastive / batchNumber,
-      }
    print(string.format('Epoch: [%d][TRAINING SUMMARY] Total Time(s): %.2f\tLR:: %.5f',
                        epoch, tm:time().real, optimState.learningRate))
    print('\n')
@@ -135,6 +89,98 @@ function M:copyInputs(sample)
    self.info   = sample.info
 
    self.input:resize(sample.input:size()):copy(sample.input)
+end
+
+
+local timer = torch.Timer()
+function M:trainBatch(inputs, target, info)
+  timer:reset()
+  collectgarbage()
+  
+  if opt.cuda then
+    cutorch.synchronize()
+  end
+  
+  local numImages = inputs:size(1)
+
+  tripletSampling.numPerClass = info.nSamplesPerClass 
+  pairSampling.numPerClass    = info.nSamplesPerClass
+  local embeddings            = self.model:forward(inputs)
+  self:toFloat(embeddings)
+  
+  self.model:zeroGradParameters()
+  local err     = criterion:forward(embeddings, target)
+  print("err: " .. err)
+  local df_do   = criterion:backward(embeddings, target)
+
+  self:toCuda(df_do)
+  self.model:backward(inputs, df_do)
+  self:toFloat(df_do)
+
+  local curGrad
+  local curParam
+  local function fEvalMod()
+      return err, self.gradParams
+  end
+  optimMethod(fEvalMod, self.params, self.originalOptState)
+  batchNumber = batchNumber + 1
+
+  self:logBatch(embeddings, target)
+  self:updateClusters(embeddings, target, info)
+
+  all_time = all_time + timer:time().real
+  timer:reset()
+
+end
+
+function M:toFloat(data)
+  for key,value in pairs(data) do
+    if (type(value) == "table") then
+      data[key] = {value[1]:float(), value[2]:float()}
+    else  
+      data[key] = value:float()
+    end
+  end
+end
+
+function M:toCuda(data)
+  for key,value in pairs(data) do
+    data[key] = value:cuda()
+  end
+end
+
+function M:learningRate(epoch)
+   -- Training schedule
+   local   decay = math.floor((epoch - 1) / opt.LRDecay)
+   return opt.LR * math.pow(0.1, decay)
+end
+
+function M:logBatch(embeddings, target)
+
+   if trainLoggerAcc then
+      cm:batchAdd(embeddings[2], target)
+   end
+   
+   -- TODO: log info from turn-on criterion
+   for name, value in pairs(listActiveCriterion) do
+      value:addErrGrad()
+   end
+   
+   print(('Epoch: [%d][%d/%d]\tTime %.3f'):format(
+        epoch, batchNumber, opt.epochSize, timer:time().real))
+end
+
+-- Based on paper "A Discriminative Feature Learning Approach for Deep Face Recognition",Yandong Wen, Kaipeng Zhang, Zhifeng Li and Yu Qiao
+function M:updateClusters( embeddings, target, info )
+   -- Get embeding for each class independent
+   local clusterUpdate = torch.FloatTensor(opt.peoplePerBatch, opt.embSize)
+   local startIdx      = 1
+   for i=1,opt.peoplePerBatch do
+      local embClass = embeddings[1][{{startIdx,startIdx + info.nSamplesPerClass[i]-1},{}}]
+      local mean     = torch.repeatTensor(clusterCenters[target[startIdx]],embClass:size(1),1):csub(embClass):mean(1)
+      clusterCenters[target[startIdx]] = clusterCenters[target[startIdx]] - opt.clusterLR * mean
+      startIdx = startIdx + info.nSamplesPerClass[i]
+   end
 end
 
 function M:saveModel(model)
@@ -183,111 +229,6 @@ function M:saveModel(model)
    collectgarbage()
  
    return model
-end
-
-
-local timer = torch.Timer()
-function M:trainBatch(inputs, target, info)
-  timer:reset()
-  collectgarbage()
-  
-  if opt.cuda then
-    cutorch.synchronize()
-  end
-  
-  local numImages = inputs:size(1)
-
-  tripletSampling.numPerClass = info.nSamplesPerClass 
-  pairSampling.numPerClass = info.nSamplesPerClass
-  local embeddings            = self.model:forward(inputs)
-  self:toFloat(embeddings)
-  
-  self.model:zeroGradParameters()
-  local err     = criterion:forward(embeddings, target)
-  local df_do   = criterion:backward(embeddings, target)
-
-  self:toCuda(df_do)
-  self.model:backward(inputs, df_do)
-  self:toFloat(df_do)
-  gradient_center   = gradient_center   + centerLoss.gradInput:abs():sum()
-  gradient_soft     = gradient_soft     + classificationBlock.gradInput:abs():sum()
-  gradient_triplets = gradient_triplets + tripletSampling.gradInput:abs():sum()
-  gradient_constrastive = gradient_constrastive + pairSampling.gradInput:abs():sum()
-  local curGrad
-  local curParam
-  local function fEvalMod()
-      return err, self.gradParams
-  end
-  optimMethod(fEvalMod, self.params, self.originalOptState)
-  batchNumber = batchNumber + 1
-  self:logBatch(embeddings, target, err)
-  self:updateClusters(embeddings, target, info)
-
-  all_time = all_time + timer:time().real
-  timer:reset()
-
-end
-
-function M:toFloat(data)
-  for key,value in pairs(data) do
-    if (type(value) == "table") then
-      data[key] = {value[1]:float(), value[2]:float()}
-    else  
-      data[key] = value:float()
-    end
-  end
-end
-
-function M:toCuda(data)
-  for key,value in pairs(data) do
-    data[key] = value:cuda()
-  end
-end
-
-function M:learningRate(epoch)
-   -- Training schedule
-   local   decay = math.floor((epoch - 1) / opt.LRDecay)
-   return opt.LR * math.pow(0.1, decay)
-end
-
-function M:logBatch(embeddings, target,err)
-
-   if trainLoggerCenter then
-      center_loss = center_loss + err[1]
-      print(('Center Loss : %.2e'):format(err[1]))
-   end
-   
-   if trainLoggerAcc then
-      cm:batchAdd(embeddings[2], target)
-      softmax_loss = softmax_loss + err[2]
-      print(('Classification Loss %.2e'):format(err[2]))
-   end
-   
-   if trainLoggerConstrastive then
-     constrastive_loss = constrastive_loss + err[3]
-     print(('Constrastive Loss %.2e'):format(err[3]))
-   end
-   
-   if trainLoggerTriplet then
-      triplet_loss = triplet_loss + err[4]
-      print(('Triplet Loss : %.2e'):format(err[4]))
-   end
-   
-   print(('Epoch: [%d][%d/%d]\tTime %.3f'):format(
-        epoch, batchNumber, opt.epochSize, timer:time().real))
-end
-
--- Based on paper "A Discriminative Feature Learning Approach for Deep Face Recognition",Yandong Wen, Kaipeng Zhang, Zhifeng Li and Yu Qiao
-function M:updateClusters( embeddings, target, info )
-   -- Get embeding for each class independent
-   local clusterUpdate = torch.FloatTensor(opt.peoplePerBatch, opt.embSize)
-   local startIdx      = 1
-   for i=1,opt.peoplePerBatch do
-      local embClass = embeddings[1][{{startIdx,startIdx + info.nSamplesPerClass[i]-1},{}}]
-      local mean     = torch.repeatTensor(clusterCenters[target[startIdx]],embClass:size(1),1):csub(embClass):mean(1)
-      clusterCenters[target[startIdx]] = clusterCenters[target[startIdx]] - opt.clusterLR * mean
-      startIdx = startIdx + info.nSamplesPerClass[i]
-   end
 end
 
 

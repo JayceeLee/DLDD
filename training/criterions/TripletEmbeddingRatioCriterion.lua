@@ -20,6 +20,7 @@ function TripletEmbeddingRatioCriterion:updateOutput(input)
 
    self.Li = torch.max(torch.cat(torch.Tensor(N):zero():type(torch.type(a)) , torch.ones(N) - torch.cdiv((a - n):norm(2,2), (a - p):norm(2,2) + self.alpha), 2), 2)
    self.output = self.Li:sum() / N
+   print(torch.cdiv((a - n):norm(2,2), (a - p):norm(2,2) + self.alpha))
 
    return self.output
 end

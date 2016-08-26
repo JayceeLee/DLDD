@@ -3,6 +3,11 @@ require 'CenterCriterion'
 require 'ContrastiveCriterion'
 require 'GlobalCriterionTriplet'
 require 'TripletEmbeddingRatioCriterion'
+require 'TripletSimilarityCriterion'
+require 'LiftedStructuredCritertion'
+require 'MultiBatchCriterion'
+require 'MagnetCriterion'
+require 'TripletProbabilityCriterion'
 
 local mytester = torch.Tester()
 local precision = 1e-5
@@ -52,8 +57,8 @@ end
 
 local function criterionJacobianTestPair(cri, input, target, idxPair)
    local eps = 1e-6
-   local _ = cri:forward({input,target}, target)
-   local dfdx = cri:backward({input,target}, target)
+   local l = cri:forward(input, target)
+   local dfdx = cri:backward(input, target)
    
    -- for each input perturbation, do central difference
    local centraldiff_dfdx = torch.Tensor():resizeAs(dfdx[idxPair])
@@ -69,10 +74,10 @@ local function criterionJacobianTestPair(cri, input, target, idxPair)
    for i=start,stop do
       -- f(xi + h)
       input_s[i] = input_s[i] + eps
-      local fx1 = cri:forward({input,target}, target)
+      local fx1 = cri:forward(input, target)
       -- f(xi - h)
       input_s[i] = input_s[i] - 2*eps
-      local fx2 = cri:forward({input,target}, target)
+      local fx2 = cri:forward(input, target)
       -- f'(xi) = (f(xi + h) - f(xi - h)) / 2h
       local cdfx = (fx1 - fx2) / (2*eps)
       -- store f' in appropriate place
@@ -83,14 +88,15 @@ local function criterionJacobianTestPair(cri, input, target, idxPair)
 
    -- compare centraldiff_dfdx with :backward()
    local err = (centraldiff_dfdx - dfdx[idxPair]):abs():max()
+   print(dfdx[idxPair])
+   print(centraldiff_dfdx)
    mytester:assertlt(err, precision, 'error in difference between central difference and :backward')
 end
 
 local function criterionJacobianTest(cri, input, target)
-   local eps = 1e-6
+   local eps = 1e-1
    local _ = cri:forward(input, target)
    local dfdx = cri:backward(input, target)
-   print (dfdx[1])
    -- for each input perturbation, do central difference
    local centraldiff_dfdx = torch.Tensor():resizeAs(dfdx)
    local input_s = input:storage()
@@ -99,9 +105,11 @@ local function criterionJacobianTest(cri, input, target)
       -- f(xi + h)
       input_s[i] = input_s[i] + eps
       local fx1 = cri:forward(input, target)
+--       print(fx1)
       -- f(xi - h)
       input_s[i] = input_s[i] - 2*eps
       local fx2 = cri:forward(input, target)
+--       print(fx2)
       -- f'(xi) = (f(xi + h) - f(xi - h)) / 2h
       local cdfx = (fx1 - fx2) / (2*eps)
       -- store f' in appropriate place
@@ -112,6 +120,8 @@ local function criterionJacobianTest(cri, input, target)
 
    -- compare centraldiff_dfdx with :backward()
    local err = (centraldiff_dfdx - dfdx):abs():max()
+   print(dfdx)
+   print(centraldiff_dfdx)
    mytester:assertlt(err, precision, 'error in difference between central difference and :backward')
 end
 
@@ -119,14 +129,14 @@ end
 function CenterCriterion()
    local numLabels     = math.random(5,10)
    local input         = torch.rand(numLabels,10)
-   local clusterCenters = torch.rand(numLabels,10)
+   local centerCluster = torch.rand(numLabels,10)
    local target        = torch.Tensor(numLabels)
    for i=1,numLabels do
       target[i] = math.random(1,numLabels)
    end
    
    local cri = nn.CenterCriterion()
-   cri.clusterCenters = clusterCenters
+   cri.centerCluster = centerCluster
    criterionJacobianTest(cri, input, target)
 end
 
@@ -135,10 +145,12 @@ function ContrastiveCriterion()
    local input         = torch.rand(2,numLabels,10)
    local target        = torch.Tensor(numLabels)
    for i=1,numLabels do
-      target[i] = math.random(1,2)
+      local rand = math.random(-1,1)
+      if rand == 0 then rand = rand - 1 end
+      target[i] = rand
    end
-   
-   local cri = nn.ContrastiveCriterion()
+
+   local cri = nn.ContrastiveCriterion(1.0)
    criterionJacobianTestPair(cri, input, target, 1)
    criterionJacobianTestPair(cri, input, target, 2)
 end
@@ -157,11 +169,61 @@ function TripletEmbeddingRatioCriterion()
   criterionJacobianTestTriplet(cri, input,1)
 end
 
+function TripletSimilarityCriterion()
+  local numLabels     = math.random(5,10)
+  local input         = torch.rand(3,numLabels,10)
+  local cri = nn.TripletSimilarityCriterion()
+  criterionJacobianTestTriplet(cri, input,2)
+end
+
+function LiftedStructuredCritertion()
+  local numLabels     = math.random(5,10)
+  local input         = torch.rand(3,numLabels,10)
+  local cri = nn.LiftedStructuredCritertion()
+  criterionJacobianTestTriplet(cri, input,3)
+end
+
+function MultiBatchCriterion()
+   local numLabels     = math.random(5,10)
+   local input         = torch.rand(2,numLabels,10)
+   local target        = torch.Tensor(numLabels)
+   for i=1,numLabels do
+      target[i] = math.random(0,1) and 1 or -1 
+   end
+
+   local cri = nn.MultiBatchCriterion(1.0)
+--    criterionJacobianTestPair(cri, input, target, 1)
+   criterionJacobianTestPair(cri, input, target, 2)
+end
+
+function MagnetCriterion()
+   local numLabels     = 3--math.random(5,10)
+   local input         = torch.rand(numLabels,2)
+   local centerCluster = torch.rand(numLabels,2)
+   local target        = torch.Tensor(numLabels)
+   for i=1,numLabels do
+      target[i] = math.random(1,numLabels)
+   end
+   
+   local cri = nn.MagnetCriterion(0.0)
+   cri.centerCluster = centerCluster
+   criterionJacobianTest(cri, input, target)
+end
+
+function TripletProbabilityCriterion()
+  local numLabels     = math.random(5,10)
+  local input         = torch.rand(3,numLabels,10)
+  local cri = nn.TripletProbabilityCriterion()
+  criterionJacobianTestTriplet(cri, input,3)
+end
+
 -- CenterCriterion()
--- ContrastiveCriterion()
+ContrastiveCriterion()
 -- GlobalLoss()
-TripletEmbeddingRatioCriterion()
-
-
-
+-- TripletEmbeddingRatioCriterion()
+-- TripletSimilarityCriterion()
+-- LiftedStructuredCritertion()
+-- MultiBatchCriterion()
+-- MagnetCriterion()
+-- TripletProbabilityCriterion()
 

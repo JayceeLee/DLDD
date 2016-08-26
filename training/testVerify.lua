@@ -24,8 +24,9 @@ function Test:test(dataLoader)
   cutorch.synchronize()
   model:evaluate()
   self:resetLogger()
-  self:testVerification(dataLoader)
+  local verAcc = self:testVerification(dataLoader)
   collectgarbage()
+  return verAcc
 end
 
 function Test:testVerification(dataLoader)
@@ -33,7 +34,7 @@ function Test:testVerification(dataLoader)
   for n, sample in dataLoader:run() do
       self:copyInputs(sample)
       self:repBatch(self.input, self.target, self.info, dataLoader.dataset.imageInfo.imagePath)
-      xlua.progress(n, dataLoader:size())
+--       xlua.progress(n, dataLoader:size())
   end
 
   if testLoggerAcc then
@@ -73,6 +74,7 @@ function Test:testVerification(dataLoader)
    }
    
   timer:reset()
+  return best_acc
 end
   
   
@@ -107,7 +109,7 @@ function Test:repBatch(input, labels, info, allPaths)
   -- log stddev of difference between features and cluster center
   local stdDiff = torch.FloatTensor(N)
   for i=1,N do
-    stdDiff[i] = (embeddings[i] - clusterCenters[labels[i]]):pow(2):sum() / embeddings:size(2)
+    stdDiff[i] = (embeddings[i] - centerCluster[labels[i]]):pow(2):sum() / embeddings:size(2)
   end
   stdDev = stdDev + stdDiff:sum()/N
 end

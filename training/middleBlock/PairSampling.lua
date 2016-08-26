@@ -54,14 +54,14 @@ function PairSampling:sampleWithConstraints(input)
           -- Add the embeding of each example.
           table.insert(as_table,input[aIdx]:float())
           table.insert(sc_table,input[pIdx]:float())
-	  table.insert(as_table,input[aIdx]:float())
+          table.insert(as_table,input[aIdx]:float())
           table.insert(sc_table,input[selNegIdx]:float())
            -- Add the original index of pairs.
-	  table.insert(self.pairIdx, {aIdx,pIdx})
-	  table.insert(self.pairIdx, {aIdx,selNegIdx})
-	  -- Add target as positive and negative pair
-	  table.insert(target, 2)
-	  table.insert(target, 1)
+          table.insert(self.pairIdx, {aIdx,pIdx})
+          table.insert(self.pairIdx, {aIdx,selNegIdx})
+          -- Add target as positive and negative pair
+          table.insert(target, 1)
+          table.insert(target, -1)
           pairIdx = pairIdx + 1
         end
         numPair = numPair + 1
@@ -83,45 +83,47 @@ function PairSampling:sampleWithConstraints(input)
   end
 
   self.output = self:concatOutput({as_table, ps_table, sc_table})
-  return {self.output, torch.Tensor(target)}
+  self.target = torch.Tensor(target):int()
+  return self.output
 end
 
 function PairSampling:randomPairs(input)
-  local as_table = {}
-  local sc_table = {}
-  local target   = {}
+   local as_table = {}
+   local sc_table = {}
+   local target   = {}
 
-  local embStartIdx = 1
-  for i = 1,self.peoplePerBatch do
-    local n = self.numPerClass[i]
-    -- get indexes of classes not in current class
-    local negIdx = torch.cat(torch.range(1,embStartIdx), torch.range(embStartIdx + n - 1,input:size(1)))
-    for j = 1,n-1 do -- For every image in the batch.
+   local embStartIdx = 1
+   for i = 1,self.peoplePerBatch do
+      local n = self.numPerClass[i]
+      -- get indexes of classes not in current class
+      local negIdx = torch.cat(torch.range(1,embStartIdx), torch.range(embStartIdx + n - 1,input:size(1)))
+      for j = 1,n-1 do -- For every image in the batch.
       local aIdx = embStartIdx + j - 1
       for pair = j, n-1 do -- For every possible positive pair.
-        local pIdx   = embStartIdx + pair 
-        
-	selNegIdx = negIdx[math.random (negIdx:size(1))]
-	-- Add the embeding of each example.
-	table.insert(as_table,input[aIdx]:float()) -- postive pair
-	table.insert(sc_table,input[pIdx]:float())
-	table.insert(as_table,input[aIdx]:float()) -- negative pair
-	table.insert(sc_table,input[selNegIdx]:float())
-	-- Add the original index of pairs.
-	table.insert(self.pairIdx, {aIdx,pIdx})
-	table.insert(self.pairIdx, {aIdx,selNegIdx})
-	-- Add target as positive and negative pair
-	table.insert(target, 2)
-	table.insert(target, 1)
+         local pIdx   = embStartIdx + pair 
+
+         selNegIdx = negIdx[math.random (negIdx:size(1))]
+         -- Add the embeding of each example.
+         table.insert(as_table,input[aIdx]:float()) -- postive pair
+         table.insert(sc_table,input[pIdx]:float())
+         table.insert(as_table,input[aIdx]:float()) -- negative pair
+         table.insert(sc_table,input[selNegIdx]:float())
+         -- Add the original index of pairs.
+         table.insert(self.pairIdx, {aIdx,pIdx})
+         table.insert(self.pairIdx, {aIdx,selNegIdx})
+         -- Add target as positive and negative pair
+         table.insert(target, 1)
+         table.insert(target, -1)
       end
       local aIdx = embStartIdx + n - 1
-    end
-    embStartIdx = embStartIdx + n
-  end
-  assert(embStartIdx - 1 == input:size(1))
+      end
+      embStartIdx = embStartIdx + n
+   end
+   assert(embStartIdx - 1 == input:size(1))
 
-  self.output = self:concatOutput({as_table, sc_table})
-  return {self.output, torch.Tensor(target)}
+   self.output = self:concatOutput({as_table, sc_table})
+   self.target = torch.Tensor(target)
+   return self.output
 end
 
 function PairSampling:concatOutput(dataTable)
@@ -135,7 +137,7 @@ function PairSampling:updateGradInput(input, gradOutput)
    --map gradient to the index of input
   self.gradInput = torch.Tensor(input:size(1),input:size(2)):type(input:type())
   self.gradInput:zero()
-  if self.skipBatch then -- if no triplet satisfy constrains, return zero gradient
+  if self.skipBatch then -- if no pair satisfy constrains, return zero gradient
     return self.gradInput
   end
   --get all gradient for each example
@@ -144,6 +146,7 @@ function PairSampling:updateGradInput(input, gradOutput)
       self.gradInput[self.pairIdx[i][2]]:add(gradOutput[2][i])
   end
   -- Averege gradient per number of pairs?
+  self.gradInput = self.gradInput / input:size(1)
   return self.gradInput
 end
 

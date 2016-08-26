@@ -16,19 +16,19 @@ Threads.serialization('threads.sharedserialize')
 local M = {}
 local DataLoader = torch.class('openface.DataLoader', M)
 
-function DataLoader.create(opt, clusterCenters)
+function DataLoader.create(opt, centerCluster)
    -- The train and val loader
    local loaders = {}
 
    for i, split in ipairs{'train','val'} do
       local dataset = datasets.create(opt, split)
-      loaders[i] = M.DataLoader(dataset, opt, split, clusterCenters)
+      loaders[i] = M.DataLoader(dataset, opt, split, centerCluster)
    end
 
    return table.unpack(loaders)
 end
 
-function DataLoader:__init(dataset, opt, split, clusterCenters)
+function DataLoader:__init(dataset, opt, split, centerCluster)
    local manualSeed = opt.manualSeed
    local function init()
       require('datasets/' .. opt.dataset)
@@ -75,7 +75,7 @@ function DataLoader:__init(dataset, opt, split, clusterCenters)
    end
    self.opt             = opt    
    self.split           = split
-   self.clusterCenters  = clusterCenters
+   self.centerCluster  = centerCluster
 end
 
 function DataLoader:size()
@@ -167,7 +167,7 @@ function DataLoader:infoForSamplingImagesFromCluster()
    local info = {}
    info.peoplePerBatch  = self.peoplePerBatch
    info.imagesPerPerson = self.imagesPerPerson
-   info.clusterCenters  = self.clusterCenters
+   info.centerCluster  = self.centerCluster
    return info
 end
 

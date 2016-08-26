@@ -120,9 +120,9 @@ function ImageData:sampleImagesFromClusters(info)
    -- Get random class
    local anchorClass      = torch.randperm(#self.classList)[{{1}}]:int()
    local nSamplesPerClass = torch.Tensor(info.peoplePerBatch)
-   local clusterCenter    = info.clusterCenters[anchorClass[1]]:view(1, self.opt.embSize)
+   local clusterCenter    = info.centerCluster[anchorClass[1]]:view(1, self.opt.embSize)
    -- Get classes close to anchorClass
-   local _,classes        = metrics.distancesL2(clusterCenter,info.clusterCenters):float():topk(info.peoplePerBatch)
+   local _,classes        = metrics.distancesL2(clusterCenter,info.centerCluster):float():topk(info.peoplePerBatch)
 
    -- print(idx:index(1, torch.randperm(idx:size(2)):long()))
    -- local idx              = idx:index(1, torch.randperm(idx:size(1)):long())[{{2,info.peoplePerBatch}}]:int()

@@ -4,9 +4,9 @@
 
 local CenterCriterion, parent = torch.class('nn.CenterCriterion', 'nn.Criterion')
 
-function CenterCriterion:__init(clusterCenter)
+function CenterCriterion:__init(centerCluster)
    parent.__init(self)
-   self.clusterCenters = clusterCenter
+   self.centerCluster = centerCluster
    self.Li = torch.Tensor()
    self.gradInput = {}
 end
@@ -15,7 +15,7 @@ function CenterCriterion:updateOutput(input, target)
    local N = input:size(1)
    self.Li  = torch.Tensor(input:size())
    for i=1,N do
-     self.Li[i] = input[i] - self.clusterCenters[target[i]]
+     self.Li[i] = input[i] - self.centerCluster[target[i]]
    end
    self.output = torch.pow(self.Li, 2):sum(2):sum()  / (2 * N)
   

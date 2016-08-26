@@ -1,7 +1,7 @@
 require 'optim'
 
 local optimMethod = _G.optim[opt.optimization]
-local optimState = {
+optimState = {
       learningRate = opt.LR,
       learningRateDecay = 0.0,
       momentum = opt.momentum,
@@ -9,7 +9,6 @@ local optimState = {
       dampening = 0.0,
       weightDecay = opt.weightDecay,
    }
-local optimator = nil 
 
 if opt.SoftMax ~= 0 then
    trainLoggerAcc = optim.Logger(paths.concat(opt.save, 'AccuracyTrain.log'))
@@ -27,7 +26,7 @@ function M:train(dataloader, models)
    -- init main model
    model = models:modelSetup(model)
    if trainLoggerAcc then
-        cm = optim.ConfusionMatrix(opt.nClasses, torch.range(1,opt.nClasses))
+      cm = optim.ConfusionMatrix(opt.nClasses, torch.range(1,opt.nClasses))
    end
    optimState.learningRate = self:learningRate(epoch)
    -- init model with additional module
@@ -43,9 +42,9 @@ function M:train(dataloader, models)
    for n, sample in dataloader:run() do
       self:copyInputs(sample)
       self:trainBatch(self.input, self.target, self.info)
-      dataloader.clusterCenters = clusterCenters -- update cluster Centers
+      dataloader.centerCluster = centerCluster -- update cluster Centers
       if opt.Center > 0.0 then -- update cluster center in loss function
-         config.Raw.Center.model.clusterCenters = clusterCenters
+         config.Raw.Center.model.centerCluster = centerCluster
       end
    end
 
@@ -53,6 +52,7 @@ function M:train(dataloader, models)
    
    for name, value in pairs(listActiveCriterion) do
       value:logData(batchNumber)
+      value:zero()
    end
 
    if trainLoggerAcc then
@@ -107,10 +107,12 @@ function M:trainBatch(inputs, target, info)
   pairSampling.numPerClass    = info.nSamplesPerClass
   local embeddings            = self.model:forward(inputs)
   self:toFloat(embeddings)
-  
   self.model:zeroGradParameters()
+  if config.PairSamplingEnable then -- Get targets for Pair Sampling
+    target = {target, target, pairSampling.target, target}
+  end
+
   local err     = criterion:forward(embeddings, target)
-  print("err: " .. err)
   local df_do   = criterion:backward(embeddings, target)
 
   self:toCuda(df_do)
@@ -124,7 +126,10 @@ function M:trainBatch(inputs, target, info)
   end
   optimMethod(fEvalMod, self.params, self.originalOptState)
   batchNumber = batchNumber + 1
-
+  
+  if config.PairSamplingEnable then
+    target = target[1]
+  end
   self:logBatch(embeddings, target)
   self:updateClusters(embeddings, target, info)
 
@@ -177,60 +182,10 @@ function M:updateClusters( embeddings, target, info )
    local startIdx      = 1
    for i=1,opt.peoplePerBatch do
       local embClass = embeddings[1][{{startIdx,startIdx + info.nSamplesPerClass[i]-1},{}}]
-      local mean     = torch.repeatTensor(clusterCenters[target[startIdx]],embClass:size(1),1):csub(embClass):mean(1)
-      clusterCenters[target[startIdx]] = clusterCenters[target[startIdx]] - opt.clusterLR * mean
+      local mean     = torch.repeatTensor(centerCluster[target[startIdx]],embClass:size(1),1):csub(embClass):mean(1)
+      centerCluster[target[startIdx]] = centerCluster[target[startIdx]] - opt.clusterLR * mean
       startIdx = startIdx + info.nSamplesPerClass[i]
    end
 end
-
-function M:saveModel(model)
-   -- Check for nans from https://github.com/cmusatyalab/openface/issues/127
-   local function checkNans(x, tag)
-      local I = torch.ne(x,x)
-      if torch.any(I) then
-         print("train.lua: Error: NaNs found in: ", tag)
-         os.exit(-1)
-         -- x[I] = 0.0
-      end
-   end
-
-   for j, mod in ipairs(model:listModules()) do
-      if torch.typename(mod) == 'nn.SpatialBatchNormalization' then
-         checkNans(mod.running_mean, string.format("%d-%s-%s", j, mod, 'running_mean'))
-         checkNans(mod.running_var, string.format("%d-%s-%s", j, mod, 'running_var'))
-      end
-   end
-
-   if opt.cudnn then
-      cudnn.convert(model, nn)
-   end
- 
-   local dpt
-   if torch.type(model) == 'nn.DataParallelTable' then
-      dpt   = model
-      model = model:get(1)        
-   end    
-   
-   local optnet_loaded, optnet = pcall(require,'optnet')
-   if optnet_loaded then
-    optnet.removeOptimization(model)
-   end
-   
-   torch.save(paths.concat(opt.save, 'model_' .. epoch .. '.t7'),  model:clearState())
-   torch.save(paths.concat(opt.save, 'optimState_' .. epoch .. '.t7'), optimState)
-   if config.SoftMaxLoss then
-      torch.save(paths.concat(opt.save, 'model_classification_' .. epoch .. '.t7'),  classificationBlock:clearState())
-   end
-  
-   if dpt then -- OOM without this
-      dpt:clearState()
-   end
-
-   collectgarbage()
- 
-   return model
-end
-
-
 
 return M

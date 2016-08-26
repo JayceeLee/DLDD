@@ -28,7 +28,7 @@ function TripletSampling:sampleWithConstraints(input)
   local as_table = {}
   local ps_table = {}
   local ns_table = {}
-  
+
   local tripIdx     = 1
   local embStartIdx = 1
   self.numTrips    = 0

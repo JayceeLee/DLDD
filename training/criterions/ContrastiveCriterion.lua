@@ -16,10 +16,8 @@ function ContrastiveCriterion:__init(margin)
 end
 
 -- Loss = 0.5 * Y * ||D1 -D2||**2 + 0.5 * (1 - Y)  * max(0, margin -||D1 -D2|| ) ** 2
-function ContrastiveCriterion:updateOutput(input)
-  
-    local inputData,target = table.unpack(input)
-    local input1, input2 = inputData[1], inputData[2] 
+function ContrastiveCriterion:updateOutput(input, target)
+    local input1, input2 = input[1], input[2] 
     local N              = input1:size(1)
     --calculate diff and dot product
     self.diff = input1 - input2
@@ -29,7 +27,7 @@ function ContrastiveCriterion:updateOutput(input)
     self.diff_margin  = torch.Tensor(N)
     
     for i=1,N do
-       if target[i] == 2 then  --select positive example
+       if target[i] == 1 then  --select positive example
 	  self.Li[i] =  dot[i]
        else --calc negative loss
 	self.negative[i]    =  torch.sqrt(dot[i])
@@ -57,16 +55,15 @@ end
 		    0 
 
 --]]
-function ContrastiveCriterion:updateGradInput(input)
-    local inputData,target = table.unpack(input)
-    local input1, input2 = inputData[1], inputData[2] 
+function ContrastiveCriterion:updateGradInput(input,target)
+    local input1, input2 = input[1], input[2] 
     local N              = input1:size(1)
     
     self.gradInput[1] = torch.Tensor():resizeAs(input1):typeAs(input1):zero()
     self.gradInput[2] = torch.Tensor():resizeAs(input1):typeAs(input1):zero()
 
     for i=1,N do
-      if target[i] == 2 then
+      if target[i] == 1 then
 	self.gradInput[1][i] = self.diff[i]
 	self.gradInput[2][i] = - self.diff[i]
       else
@@ -116,9 +113,9 @@ function ContrastiveCriterion:evalThresholdAccuracy(distances, same_info, thresh
   for i=1,distances:size(1) do
     local diff = distances[i][1]
     if diff < threshold then
-      self.confusion:add(2, same_info[i])
+      self.confusion:add(2, same_info[i] > 0 and 2 or 1)
     else
-      self.confusion:add(1, same_info[i])
+      self.confusion:add(1, same_info[i] > 0 and 2 or 1)
     end
   end
   self.confusion:updateValids()

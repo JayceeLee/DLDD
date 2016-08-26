@@ -28,10 +28,8 @@ end
 
 function ParallelCriterionS:updateGradInput(input, target)
    self.gradInput = {}
-
    for i,criterion in ipairs(self.criterions) do
       local target = self.repeatTarget and target or target[i]
-      local s = criterion:updateGradInput(input[i], target)
       self.gradInput[i] = criterion:updateGradInput(input[i], target):mul(self.weights[i])
    end
    return self.gradInput

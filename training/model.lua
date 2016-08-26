@@ -11,13 +11,19 @@ if opt.cudnn then
   cudnn.fastest = true
   cudnn.verbose = false
 end
-paths.dofile('criterions/TripletEmbedding.lua')
-paths.dofile('criterions/TripletEmbeddingRatioCriterion.lua')
-paths.dofile('criterions/GlobalCriterionTriplet.lua')
 paths.dofile('criterions/CenterCriterion.lua')
 paths.dofile('criterions/ContrastiveCriterion.lua')
+paths.dofile('criterions/MultiBatchCriterion.lua')
+paths.dofile('criterions/TripletEmbedding.lua')
+paths.dofile('criterions/GlobalCriterionTriplet.lua')
+paths.dofile('criterions/TripletEmbeddingRatioCriterion.lua')
+paths.dofile('criterions/TripletSimilarityCriterion.lua')
+paths.dofile('criterions/LiftedStructuredCritertion.lua')
+paths.dofile('criterions/TripletProbabilityCriterion.lua')
+
 paths.dofile('criterions/EmptyCriterion.lua')
 paths.dofile('criterions/ParallelCriterionS.lua')
+paths.dofile('criterions/ParallelCriterionMerge.lua')
 
 paths.dofile('middleBlock/TripletSampling.lua')
 paths.dofile('middleBlock/PairSampling.lua')
@@ -73,13 +79,11 @@ end
 
 function CriterionConfig:logData(batchNumber)
    self.trainLogger:add{
-        ['avg ' ..  self.name .. ' (train set)'] = self.loss / batchNumber,
+        ['avg ' ..  self.name .. ' loss (train set)'] = self.loss / batchNumber,
         ['avg gradient from ' .. self.name .. ' (train set)'] = self.gradient / batchNumber,
      }
-   print(string.format('Average ' .. self.name .. '  loss (per batch): %.2f', self.loss)) 
+   print(string.format('Average ' .. self.name .. '  loss (per batch): %.2f', self.loss/ batchNumber)) 
 end
-
-
 
 
 local M = {}
@@ -89,24 +93,31 @@ local ModelConfig = torch.class('ModelConfig', M)
 function ModelConfig:generateConfig(opt)
   config = {
     Raw = {
-     Center = CriterionConfig('Center', nn.CenterCriterion, opt.Center, {clusterCenters}),
+     Center = CriterionConfig('Center', nn.CenterCriterion, opt.Center, {centerCluster}),
     },
     Classification = {
      SoftMax = CriterionConfig('SoftMax', nn.CrossEntropyCriterion, opt.SoftMax),
     },
     Pair = {
-     Constrastive =  CriterionConfig('Constrastive', nn.ContrastiveCriterion, opt.Constr, {margin='auto'}),
+     Constrastive =  CriterionConfig('Constrastive', nn.ContrastiveCriterion, opt.Constr, {1.0}),
+     MultiBatch   = CriterionConfig('MultiBatchCriterion', nn.MultiBatchCriterion, opt.Mulbatch, {'auto'}),
+     CosineEmbedding = CriterionConfig('CosineEmbeddingCriterion', nn.CosineEmbeddingCriterion, opt.Cosine, {1.0}), --Error:  return the table, not tensor
     },
     Triplets = {
-     Triplet       = CriterionConfig('Triplet', nn.TripletEmbeddingCriterion, opt.Triplet, {alpha=opt.alpha}),
-     GlobalTriplet = CriterionConfig('GlobalTriplet', nn.GlobalCriterionTriplet, opt.Global, {alpha=0.4, lambda=0.8}),
-     TripletRatio  = CriterionConfig('TripletRatio', nn.TripletEmbeddingRatioCriterion, opt.Triratio, {alpha=0.01}),
+     Triplet       = CriterionConfig('Triplet', nn.TripletEmbeddingCriterion, opt.Triplet, {opt.alpha}),
+     GlobalTriplet = CriterionConfig('GlobalTriplet', nn.GlobalCriterionTriplet, opt.Global, {0.4, 0.8}),
+     TripletRatio  = CriterionConfig('TripletRatio', nn.TripletEmbeddingRatioCriterion, opt.Triratio, {0.01}),
+     TripletSimilarity = CriterionConfig('TripletSimilarityCriterion', nn.TripletSimilarityCriterion, opt.Trisim, {0.1}),
+     LiftedStructured = CriterionConfig('LiftedStructuredCritertion', nn.LiftedStructuredCritertion, opt.Lifted, {1.0}),
+     TripletProbability = CriterionConfig('TripletProbabilityCriterion', nn.TripletProbabilityCriterion, opt.Triprob),
     },
+    PairSamplingEnable = -1,
     PairSampling  = 'random',
     TripletSampling = 'semi-hard' --'random'
   }
   
 end
+
 
 --define a model with embeding layer
 function ModelConfig:modelSetup(continue)
@@ -159,6 +170,7 @@ function ModelConfig:middleBlockSetup(opt)
   -- Pair module
   pairSampling = nn.Identity()
   if ifAny(config.Pair) then
+    config.PairSamplingEnable = 1
     pairSampling = nn.PairSampling(opt, config.PairSampling)
   end
   middleBlock:add(pairSampling) -- pairs
@@ -183,7 +195,7 @@ function ModelConfig:setupSingleLoss(branch, criterionsBlock, listActiveCritetio
    local weightLoss = 1.0
    if ifAny(branch) then
       if countCriterion(branch) > 1 then
-         criterions = nn.ParallelCriterion(true)
+         criterions = nn.ParallelCriterionMerge(true, true)
          for name,value in pairs(branch) do
             if value.weight > 0.0 then
              criterions:add(value:create(), value.weight)
@@ -206,7 +218,7 @@ end
 
 -- define all criterions
 function ModelConfig:critertionSetup()
-   local criterionsBlock = nn.ParallelCriterion(true)
+   local criterionsBlock = nn.ParallelCriterionS(not(config.PairSamplingEnable > 0 and false or true))
    listActiveCriterion = {}
    -- Raw Loss
    self:setupSingleLoss(config.Raw, criterionsBlock, listActiveCriterion)

@@ -33,7 +33,7 @@ function M.parse(arg)
    cmd:option('-samplePeople',  'grouped', 'Sample people using peoplePerBatch and imagesPerPerson, grouped or cluster')
    cmd:option('-clusterLR',         0.5,      'Learning rate for cluster center')
    ------------- Training options --------------------
-   cmd:option('-nEpochs', 1000, 'Number of total epochs to run')
+   cmd:option('-nEpochs', 150, 'Number of total epochs to run')
    cmd:option('-epochSize', 250, 'Number of batches per epoch')
    cmd:option('-epochNumber', 1, 'Manual epoch number (useful on restarts)')
    -- GPU memory usage depends on peoplePerBatch and imagesPerPerson.
@@ -59,11 +59,16 @@ function M.parse(arg)
    cmd:option('-SoftMax', 0.0, 'SoftMax for Classification, need nClasses')
    ----------Pair module
    cmd:option('-Constr', 0.0, 'Contrastive Loss')
+   cmd:option('-Mulbatch', 0.0, 'MultiBatch Loss')
+   cmd:option('-Cosine', 0.0, 'CosineEmbeding Loss')
    ----------Triplet module
    cmd:option('-Triplet', 0.0, 'Triplet Loss')
    cmd:option('-alpha', 0.2, 'margin in TripletLoss')
-   cmd:option('-Triratio', 0.0, 'Triplet Embedding-Ratio Criterion')
-   cmd:option('-Global', 0.0, 'Global Criterion Triplet')
+   cmd:option('-Triratio', 0.0, 'Triplet Embedding-Ratio Loss')
+   cmd:option('-Global', 0.0, 'Global Triplet Loss')
+   cmd:option('-Trisim', 0.0, 'TripletSimilarity Loss')
+   cmd:option('-Lifted', 0.0, 'LiftedStructured Loss')
+   cmd:option('-Triprob', 0.0, 'TripletProbability Loss')
    cmd:text()
   
    

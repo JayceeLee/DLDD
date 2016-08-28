@@ -26,7 +26,7 @@ function utils.makeDataParallel(model, nGPU)
       local dpt = nn.DataParallelTable(1, true, true)
          :add(model, gpus)
          :threads(function()
-	         require ("dpnn")
+            require ("dpnn")
             local cudnn = require 'cudnn'
             cudnn.fastest, cudnn.benchmark = fastest, benchmark
          end)
@@ -42,13 +42,13 @@ function utils.initWeight(model)
 --       local n = v.kW*v.kH*v.nOutputPlane
 --       v.weight:normal(0,math.sqrt(2/n))
       if opt.init == "orthogonal" then
-	v:init('weight', nninit.orthogonal, {gain = 'relu'})
+         v:init('weight', nninit.orthogonal, {gain = 'relu'})
       elseif opt.init == "msra"  then
-	v:init('weight', nninit.kaiming, {dist = 'uniform',gain = 'relu'})
+         v:init('weight', nninit.kaiming, {dist = 'uniform',gain = 'relu'})
       elseif opt.init == "xavier" then
-	v:init('weight', nninit.xavier, {dist = 'normal'})
+         v:init('weight', nninit.xavier, {dist = 'normal'})
       elseif opt.init == "gaussian" then
-	v:init('weight', nninit.addNormal, 0.0, 0.01) -- mean and std-dev
+         v:init('weight', nninit.addNormal, 0.0, 0.01) -- mean and std-dev
       end
       if v.bias then v.bias:zero() end
    end

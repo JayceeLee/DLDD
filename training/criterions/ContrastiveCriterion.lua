@@ -27,12 +27,12 @@ function ContrastiveCriterion:updateOutput(input, target)
     self.diff_margin  = torch.Tensor(N)
     
     for i=1,N do
-       if target[i] == 1 then  --select positive example
-	  self.Li[i] =  dot[i]
-       else --calc negative loss
-	self.negative[i]    =  torch.sqrt(dot[i])
-	self.diff_margin[i] = self.margin - self.negative[i]
-	self.Li[i]          = math.pow(math.max(self.diff_margin[i], 0.0),2)
+      if target[i] == 1 then  --select positive example
+         self.Li[i] =  dot[i]
+      else --calc negative loss
+         self.negative[i]    =  torch.sqrt(dot[i])
+         self.diff_margin[i] = self.margin - self.negative[i]
+         self.Li[i]          = math.pow(math.max(self.diff_margin[i], 0.0),2)
       end
     end
     
@@ -49,10 +49,10 @@ end
             D1 -D2 (in case of D1) 
            -(D1 - D2) (in case of D2)
        negative: if (margin -(D1 -D2)) > 0, then 
-		    (margin - ||D1 - D2||)/||D1 - D2|| *(D1 - D2) * (-1)  (in case of D1);
+          (margin - ||D1 - D2||)/||D1 - D2|| *(D1 - D2) * (-1)  (in case of D1);
                     (margin - ||D1 - D2||)/||D1 - D2|| *(D1 - D2) * (1)   (in case of D2)
                  else: 
-		    0 
+          0 
 
 --]]
 function ContrastiveCriterion:updateGradInput(input,target)
@@ -64,16 +64,17 @@ function ContrastiveCriterion:updateGradInput(input,target)
 
     for i=1,N do
       if target[i] == 1 then
-	self.gradInput[1][i] = self.diff[i]
-	self.gradInput[2][i] = - self.diff[i]
+         self.gradInput[1][i] = self.diff[i]
+         self.gradInput[2][i] = - self.diff[i]
       else
-	if self.diff_margin[i] > 0 then -- if example are too close to each other, get gradient. Otherwise, set zeros
-	  local alpha = ((self.margin - self.negative[i])/(self.negative[i] + self.epsilon)) * self.diff[i]
-	  self.gradInput[1][i]  = - alpha
-	  self.gradInput[2][i]  =   alpha
-	end
+         if self.diff_margin[i] > 0 then -- if example are too close to each other, get gradient. Otherwise, set zeros
+           local alpha = ((self.margin - self.negative[i])/(self.negative[i] + self.epsilon)) * self.diff[i]
+           self.gradInput[1][i]  = - alpha
+           self.gradInput[2][i]  =   alpha
+         end
       end
     end
+
     self.gradInput = torch.concat({self.gradInput[1], self.gradInput[2]}):view(2, N, self.gradInput[1]:size(2))
     self.gradInput = self.gradInput / N
     

@@ -19,27 +19,49 @@ function DistanceRatioCriterion:createTarget(input, target)
 end
 
 function DistanceRatioCriterion:updateOutput(input)
-    local a = input[1] -- ancor
+    local a = input[1] -- anchor
     local p = input[2] -- positive
     local n = input[3] -- negative
     local N = a:size(1)
     
     -- Get difference between positive pair and min of negative pair
-    self.inputDiff = torch.concat({(a - p):norm(2,2):pow(2), torch.min((a - n):norm(2,2):pow(2), (p - n):norm(2,2):pow(2),2)}):view(2, N, a:size(2))
-    if not self.Target:isSameSizeAs(self.inputDiff) then
-        self:createTarget(self.inputDiff, 1)
-    end
+--     local hardTriplet, Idx = torch.min(torch.concat({(a - n):norm(2,2):pow(2), (p - n):norm(2,2):pow(2)},2):view(N,2),2)
+--     self.Idx = Idx
+    self.inputDiff = torch.concat({(a - p):pow(2):sum(2), (p - n):pow(2):sum(2)}):view(N,2)
+    if not self.Target:isSameSizeAs(self.inputDiff) then self:createTarget(self.inputDiff, 1) end
+    
     self.output = self.MSE:updateOutput(self.SoftMax:updateOutput(self.inputDiff),self.Target)
     return self.output
 end
 
 function DistanceRatioCriterion:updateGradInput(input)
-    if not self.Target:isSameSizeAs(input) then
-        self:createTarget(input, 1)
-    end
+    local a = input[1] -- anchor
+    local p = input[2] -- positive
+    local n = input[3] -- negative
+    local N = a:size(1)
+    if not self.Target:isSameSizeAs(self.inputDiff) then  self:createTarget(self.inputDiff, 1) end
+     
+    -- Get which negative tripelet was smaller
+--     print(self.Idx)
+--     local firstTriplet = self.Idx:clone():expandAs(a):double()
+--     firstTriplet[torch.eq(firstTriplet,1)] = 0
+--     local secondTriplet = self.Idx:clone():expandAs(a):double()
+--     secondTriplet = secondTriplet - 1
+    
+    self.gradInput = {}
+    local gradInputMSE = self.SoftMax:updateGradInput(self.inputDiff, self.MSE:updateGradInput(self.SoftMax.output,self.Target))
+    local ap = gradInputMSE[{{},{1}}]:expandAs(a)
+    local hard = gradInputMSE[{{},{2}}]:expandAs(a)
+    
+    print(ap)
+    print(a-p)
 
-    self.gradInput = self.SoftMax:updateGradInput(self.inputDiff, self.MSE:updateGradInput(self.SoftMax.output,self.Target))
-    --
+    self.gradInput[1] = (a-p):cmul(ap) * 2/N
+    self.gradInput[2] = (a-p):cmul(ap)
+    self.gradInput[3] = (a-p):cmul(ap)
+        
+    self.gradInput = torch.concat({self.gradInput[1], self.gradInput[2], self.gradInput[3]}):view(3, N, self.gradInput[1]:size(2))
+    
     return self.gradInput
 end
 

@@ -33,7 +33,7 @@ function M.parse(arg)
    cmd:option('-samplePeople',  'grouped', 'Sample people using peoplePerBatch and imagesPerPerson, grouped or cluster')
    cmd:option('-clusterLR',         0.5,      'Learning rate for cluster center')
    ------------- Training options --------------------
-   cmd:option('-nEpochs', 150, 'Number of total epochs to run')
+   cmd:option('-nEpochs', 100, 'Number of total epochs to run')
    cmd:option('-epochSize', 250, 'Number of batches per epoch')
    cmd:option('-epochNumber', 1, 'Manual epoch number (useful on restarts)')
    -- GPU memory usage depends on peoplePerBatch and imagesPerPerson.
@@ -44,7 +44,7 @@ function M.parse(arg)
      ---------- Optimization options ----------------------
    cmd:option('-optimization',    'sgd',  'optimization method')
    cmd:option('-LR',              0.001,  'initial learning rate')
-   cmd:option('-LRDecay',         30,     'get 10x smaller LR after period')
+   cmd:option('-LRDecay',         30,     'get 10x smaller LR after period or automatic decay after period of no progress (set negative value)')
    cmd:option('-momentum',        0.9,   'momentum')
    cmd:option('-weightDecay',     5e-4,  'weight decay')
    ---------- Model options ----------------------------------
@@ -52,6 +52,8 @@ function M.parse(arg)
    cmd:option('-modelDef', 'models/pnnet.lua', 'path to model definiton')
    cmd:option('-imgDim', 28, 'Image dimension')
    cmd:option('-embSize', 128, 'size of embedding from model')
+   cmd:option('-checkEpoch', 15, 'check if model get > -checkValue after this epoch. If not, mean that no reason to learn more')
+   cmd:option('-checkValue', 0.7, 'minimul value after some tries to continue')
    ---------- Loss options ---------------
    ---------- Raw Features module
    cmd:option('-Center', 0.0, 'CenterLoss')

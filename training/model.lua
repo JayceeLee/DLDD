@@ -58,7 +58,7 @@ function CriterionConfig:__init(name, func, weight, params)
 end
 
 -- Create a loger file and criterion function
-function CriterionConfig:create()
+function CriterionConfig:create(opt)
   self.trainLogger = optim.Logger(paths.concat(opt.save, self.name .. '.log'))
   self.model       = self.func(unpack(self.params))
   return self.model
@@ -100,7 +100,7 @@ function ModelConfig:generateConfig(opt)
     },
     Pair = {
      Constrastive =  CriterionConfig('Constrastive', nn.ContrastiveCriterion, opt.Constr, {1.0}),
-     MultiBatch   = CriterionConfig('MultiBatchCriterion', nn.MultiBatchCriterion, opt.Mulbatch, {'auto'}),
+     MultiBatch   = CriterionConfig('MultiBatchCriterion', nn.MultiBatchCriterion, opt.Mulbatch, {1.0}),
      CosineEmbedding = CriterionConfig('CosineEmbeddingCriterion', nn.CosineEmbeddingCriterion, opt.Cosine, {1.0}), --Error:  return the table, not tensor
     },
     Triplets = {
@@ -189,7 +189,7 @@ function ModelConfig:middleBlockSetup(opt)
 end
 
 -- Setup all Losses for single branch (like Raw, Triplets)
-function ModelConfig:setupSingleLoss(branch, criterionsBlock, listActiveCritetion)
+function ModelConfig:setupSingleLoss(branch, criterionsBlock, listActiveCritetion, opt)
    -- Center Loss
    local criterions = nn.EmptyCriterion()
    local weightLoss = 1.0
@@ -198,14 +198,14 @@ function ModelConfig:setupSingleLoss(branch, criterionsBlock, listActiveCritetio
          criterions = nn.ParallelCriterionMerge(true, true)
          for name,value in pairs(branch) do
             if value.weight > 0.0 then
-             criterions:add(value:create(), value.weight)
+             criterions:add(value:create(opt), value.weight)
              table.insert(listActiveCriterion, value)
             end
          end
       else
          for name,value in pairs(branch) do
            if value.weight > 0.0 then
-             criterions = value:create()
+             criterions = value:create(opt)
              weightLoss = value.weight
              table.insert(listActiveCriterion, value)
              break
@@ -217,17 +217,17 @@ function ModelConfig:setupSingleLoss(branch, criterionsBlock, listActiveCritetio
 end
 
 -- define all criterions
-function ModelConfig:critertionSetup()
+function ModelConfig:critertionSetup(opt)
    local criterionsBlock = nn.ParallelCriterionS(not(config.PairSamplingEnable > 0 and false or true))
    listActiveCriterion = {}
    -- Raw Loss
-   self:setupSingleLoss(config.Raw, criterionsBlock, listActiveCriterion)
+   self:setupSingleLoss(config.Raw, criterionsBlock, listActiveCriterion, opt)
    -- Classification Loss
-   self:setupSingleLoss(config.Classification, criterionsBlock, listActiveCriterion)
+   self:setupSingleLoss(config.Classification, criterionsBlock, listActiveCriterion, opt)
    -- Pair Loss
-   self:setupSingleLoss(config.Pair, criterionsBlock, listActiveCriterion)
+   self:setupSingleLoss(config.Pair, criterionsBlock, listActiveCriterion, opt)
    -- Triplet Loss
-   self:setupSingleLoss(config.Triplets, criterionsBlock, listActiveCriterion)
+   self:setupSingleLoss(config.Triplets, criterionsBlock, listActiveCriterion, opt)
    return criterionsBlock:float()
 end  
 

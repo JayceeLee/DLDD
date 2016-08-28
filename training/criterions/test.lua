@@ -8,6 +8,7 @@ require 'LiftedStructuredCritertion'
 require 'MultiBatchCriterion'
 require 'MagnetCriterion'
 require 'TripletProbabilityCriterion'
+require 'DistanceRatioCriterion'
 
 local mytester = torch.Tester()
 local precision = 1e-5
@@ -217,8 +218,15 @@ function TripletProbabilityCriterion()
   criterionJacobianTestTriplet(cri, input,3)
 end
 
+function DistanceRatioCriterion()
+  local numLabels     = 3--math.random(5,10)
+  local input         = torch.rand(3,numLabels,5)
+  local cri = nn.DistanceRatioCriterion()
+  criterionJacobianTestTriplet(cri, input,1)
+end
+
 -- CenterCriterion()
-ContrastiveCriterion()
+-- ContrastiveCriterion()
 -- GlobalLoss()
 -- TripletEmbeddingRatioCriterion()
 -- TripletSimilarityCriterion()
@@ -226,4 +234,5 @@ ContrastiveCriterion()
 -- MultiBatchCriterion()
 -- MagnetCriterion()
 -- TripletProbabilityCriterion()
+DistanceRatioCriterion()
 

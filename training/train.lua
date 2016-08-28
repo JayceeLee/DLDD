@@ -1,7 +1,14 @@
 require 'optim'
 
-local optimMethod = _G.optim[opt.optimization]
-optimState = {
+
+local M = {}
+
+local Train = torch.class('dddl.Train', M)
+
+
+function Train:__init(opt)
+   self.optimMethod = _G.optim[opt.optimization]
+   self.optimState = {
       learningRate = opt.LR,
       learningRateDecay = 0.0,
       momentum = opt.momentum,
@@ -9,31 +16,36 @@ optimState = {
       dampening = 0.0,
       weightDecay = opt.weightDecay,
    }
+   -- Variable for Auto Learning Decay
+   self.decayAuto = 0
+   self.decayAutoDiff = 0.01
+   self.decayAutoEpoch = 5
+   self.lastChange = 0
 
-if opt.SoftMax ~= 0 then
-   trainLoggerAcc = optim.Logger(paths.concat(opt.save, 'AccuracyTrain.log'))
+   if opt.SoftMax ~= 0 then
+      self.trainLoggerAcc = optim.Logger(paths.concat(opt.save, 'AccuracyTrain.log'))
+   end
+   self.opt = opt
 end
 
-local batchNumber
-local all_time
-local M = {}
-
-function M:train(dataloader, models)
+function Train:train(dataloader, models)
    print('==> doing epoch on training data:')
    print("==> online epoch # " .. epoch)
-   all_time = 0
-   batchNumber = 0
+   self.all_time = 0
+   self.batchNumber = 0
+   self.embNaN = false
    -- init main model
    model = models:modelSetup(model)
-   if trainLoggerAcc then
-      cm = optim.ConfusionMatrix(opt.nClasses, torch.range(1,opt.nClasses))
+   if self.trainLoggerAcc then
+      self.cm = optim.ConfusionMatrix(self.opt.nClasses, torch.range(1,self.opt.nClasses))
    end
-   optimState.learningRate = self:learningRate(epoch)
+   self.optimState.learningRate = self:learningRate(epoch)
+
    -- init model with additional module
    local model_middle = nn.Sequential()
    model_middle:add(model):add(middleBlock)
    model_middle:cuda()
-   self:initOptim(model_middle, optimState)
+   self:initOptim(model_middle, self.optimState)
     
    cutorch.synchronize()
    model_middle:training()
@@ -46,30 +58,35 @@ function M:train(dataloader, models)
       if opt.Center > 0.0 then -- update cluster center in loss function
          config.Raw.Center.model.centerCluster = centerCluster
       end
+      if self.embNaN then
+        print("NaNs at embeding, break experiment")
+        return false
+      end
    end
 
    cutorch.synchronize()
    
    for name, value in pairs(listActiveCriterion) do
-      value:logData(batchNumber)
+      value:logData(self.batchNumber)
       value:zero()
    end
 
-   if trainLoggerAcc then
-      cm:updateValids()
-      print(string.format('Accuracy: %.2f', cm.totalValid * 100))
-      trainLoggerAcc:add{
-            ['avg mAP  (train set)'] = cm.totalValid * 100
+   if self.trainLoggerAcc then
+      self.cm:updateValids()
+      print(string.format('Accuracy: %.2f',  self.cm.totalValid * 100))
+      self.trainLoggerAcc:add{
+            ['avg mAP  (train set)'] =  self.cm.totalValid * 100
          }
    end
 
    print(string.format('Epoch: [%d][TRAINING SUMMARY] Total Time(s): %.2f\tLR:: %.5f',
-                       epoch, tm:time().real, optimState.learningRate))
+                       epoch, tm:time().real,  self.optimState.learningRate))
    print('\n')
    collectgarbage()
+   return true
 end -- of train()
 
-function M:initOptim(model, optState)
+function Train:initOptim(model, optState)
     assert(model)
     assert(optState)
 
@@ -79,7 +96,7 @@ function M:initOptim(model, optState)
     self.params, self.gradParams = self.model:getParameters()
 end
 
-function M:copyInputs(sample)
+function Train:copyInputs(sample)
    -- Copies the input to a CUDA tensor, if using 1 GPU, or to pinned memory,
    -- if using DataParallelTable. The target is always copied to a CUDA tensor
    self.input = self.input or (opt.nGPU == 1
@@ -93,54 +110,55 @@ end
 
 
 local timer = torch.Timer()
-function M:trainBatch(inputs, target, info)
-  timer:reset()
-  collectgarbage()
-  
-  if opt.cuda then
+function Train:trainBatch(inputs, target, info)
+   timer:reset()
+   collectgarbage()
+
+   if opt.cuda then
     cutorch.synchronize()
-  end
-  
-  local numImages = inputs:size(1)
+   end
 
-  tripletSampling.numPerClass = info.nSamplesPerClass 
-  pairSampling.numPerClass    = info.nSamplesPerClass
-  local embeddings            = self.model:forward(inputs)
-  self:toFloat(embeddings)
-  self.model:zeroGradParameters()
-  if config.PairSamplingEnable then -- Get targets for Pair Sampling
+   local numImages = inputs:size(1)
+
+   tripletSampling.numPerClass = info.nSamplesPerClass 
+   pairSampling.numPerClass    = info.nSamplesPerClass
+   local embeddings            = self.model:forward(inputs)
+   self:toFloat(embeddings)
+   if self:checkNans(embeddings[1]) then return end-- Check if output is not NaNs 
+   self.model:zeroGradParameters()
+   if config.PairSamplingEnable then -- Get targets for Pair Sampling
     target = {target, target, pairSampling.target, target}
-  end
+   end
 
-  local err     = criterion:forward(embeddings, target)
-  local df_do   = criterion:backward(embeddings, target)
+   local err     = criterion:forward(embeddings, target)
+   local df_do   = criterion:backward(embeddings, target)
 
-  self:toCuda(df_do)
-  self.model:backward(inputs, df_do)
-  self:toFloat(df_do)
+   self:toCuda(df_do)
+   self.model:backward(inputs, df_do)
+   self:toFloat(df_do)
 
-  local curGrad
-  local curParam
-  local function fEvalMod()
+   local curGrad
+   local curParam
+   local function fEvalMod()
       return err, self.gradParams
-  end
-  optimMethod(fEvalMod, self.params, self.originalOptState)
-  batchNumber = batchNumber + 1
-  
-  if config.PairSamplingEnable then
-    target = target[1]
-  end
-  self:logBatch(embeddings, target)
-  self:updateClusters(embeddings, target, info)
+   end
+   self.optimMethod(fEvalMod, self.params, self.originalOptState)
+   self.batchNumber = self.batchNumber + 1
 
-  all_time = all_time + timer:time().real
-  timer:reset()
+   if config.PairSamplingEnable then
+    target = target[1]
+   end
+   self:logBatch(embeddings, target)
+   self:updateClusters(embeddings, target, info)
+
+   self.all_time = self.all_time + timer:time().real
+   timer:reset()
 
 end
 
-function M:toFloat(data)
+function Train:toFloat(data)
   for key,value in pairs(data) do
-    if (type(value) == "table") then
+    if type(value) == "table" then
       data[key] = {value[1]:float(), value[2]:float()}
     else  
       data[key] = value:float()
@@ -148,35 +166,50 @@ function M:toFloat(data)
   end
 end
 
-function M:toCuda(data)
+function Train:toCuda(data)
   for key,value in pairs(data) do
     data[key] = value:cuda()
   end
 end
 
-function M:learningRate(epoch)
+function Train:learningRate(epoch)
    -- Training schedule
-   local   decay = math.floor((epoch - 1) / opt.LRDecay)
-   return opt.LR * math.pow(0.1, decay)
+   if  self.opt.LRDecay > 0.0 then 
+      local   decay = math.floor((epoch - 1) /  self.opt.LRDecay)
+      return  self.opt.LR * math.pow(0.1, decay)
+   else
+      print( "Auto LR-Decay")
+      print(testData.testVer - testData.bestVerAcc)
+      print(epoch - self.lastChange)
+      print(testData.diffAcc)
+      if testData.bestEpoch > self.lastChange and testData.diffAcc > self.decayAutoDiff/3 then 
+         print ('update')
+         self.lastChange = testData.bestEpoch 
+      end
+      if (testData.testVer - testData.bestVerAcc) < self.decayAutoDiff and (epoch - self.lastChange) > self.decayAutoEpoch then
+         self.decayAuto = self.decayAuto  + 1
+         self.lastChange = epoch
+         print ("Change Decay")
+      end
+      return  self.opt.LR * math.pow(0.1, self.decayAuto)
+   end
 end
 
-function M:logBatch(embeddings, target)
-
-   if trainLoggerAcc then
-      cm:batchAdd(embeddings[2], target)
+function Train:logBatch(embeddings, target)
+   if self.trainLoggerAcc then
+      self.cm:batchAdd(embeddings[2], target)
    end
    
-   -- TODO: log info from turn-on criterion
    for name, value in pairs(listActiveCriterion) do
       value:addErrGrad()
    end
    
    print(('Epoch: [%d][%d/%d]\tTime %.3f'):format(
-        epoch, batchNumber, opt.epochSize, timer:time().real))
+        epoch, self.batchNumber, self.opt.epochSize, timer:time().real))
 end
 
 -- Based on paper "A Discriminative Feature Learning Approach for Deep Face Recognition",Yandong Wen, Kaipeng Zhang, Zhifeng Li and Yu Qiao
-function M:updateClusters( embeddings, target, info )
+function Train:updateClusters( embeddings, target, info )
    -- Get embeding for each class independent
    local clusterUpdate = torch.FloatTensor(opt.peoplePerBatch, opt.embSize)
    local startIdx      = 1
@@ -188,4 +221,17 @@ function M:updateClusters( embeddings, target, info )
    end
 end
 
-return M
+-- Check if model disverge. If the output emb is nans, break training
+function Train:checkNans(x)
+   local I = torch.ne(x,x)
+   if torch.any(I) then
+     print("train.lua: Error: NaNs found in: output")
+     self.embNaN = true
+     return true
+   end
+   return false
+end
+
+
+
+return M.Train

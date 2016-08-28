@@ -2,21 +2,31 @@
 require 'nn'
 local ffi = require 'ffi'
 local utils = require 'utils'
-testLogger = optim.Logger(paths.concat(opt.save, 'testVer.log'))
-local confusion = optim.ConfusionMatrix(2)
+local class = require 'class'
+
 
 local M = {}
-local Test       = torch.class('dddl.Test', M)
+
 local normalizer = nn.Normalize(2):float()
 local timer = torch.Timer()
-if opt.SoftMax ~= 0 then 
-  testLoggerAcc = optim.Logger(paths.concat(opt.save, 'AccuracyTest.log'))
-  confusionSoft = optim.ConfusionMatrix(opt.nClasses)
-  lossSoft      = 0
-end
 
-local testLoggerStdDev = optim.Logger(paths.concat(opt.save, 'testStdCenter.log'))
-local stdDev = 0
+
+local Test = torch.class('dddl.Test', M)
+
+function Test:__init(opt)
+   self.testLoggerStdDev = optim.Logger(paths.concat(opt.save, 'testStdCenter.log'))
+   self.testLogger = optim.Logger(paths.concat(opt.save, 'testVer.log'))
+   self.stdDev = 0
+   self.testVerTable = {}
+   self.confusion = optim.ConfusionMatrix(2)
+
+   if opt.SoftMax ~= 0 then 
+     self.testLoggerAcc = optim.Logger(paths.concat(opt.save, 'AccuracyTest.log'))
+     self.confusionSoft = optim.ConfusionMatrix(opt.nClasses)
+     self.lossSoft      = 0
+   end
+   return self
+end
 
 function Test:test(dataLoader)
   print('==> doing epoch on Verification Set:')
@@ -25,6 +35,7 @@ function Test:test(dataLoader)
   model:evaluate()
   self:resetLogger()
   local verAcc = self:testVerification(dataLoader)
+  table.insert(self.testVerTable, verAcc)
   collectgarbage()
   return verAcc
 end
@@ -38,13 +49,13 @@ function Test:testVerification(dataLoader)
   end
 
   if testLoggerAcc then
-    confusionSoft:updateValids()
-    testLoggerAcc:add{
-      ['avg mAP  (test set)'] = confusionSoft.totalValid * 100,
-      ['avg loss (test set)'] = lossSoft/dataLoader.epochSize,
+    self.confusionSoft:updateValids()
+    self.testLoggerAcc:add{
+      ['avg mAP  (test set)'] = self.confusionSoft.totalValid * 100,
+      ['avg loss (test set)'] = self.lossSoft/dataLoader.epochSize,
    }
    print(('Classification ACC: %.2f\tLoss: %.2f'):format(
-        confusionSoft.totalValid * 100, lossSoft/dataLoader.epochSize))
+        self.confusionSoft.totalValid * 100, self.lossSoft/dataLoader.epochSize))
   end
 
   
@@ -66,11 +77,11 @@ function Test:testVerification(dataLoader)
   print(('Epoch [%d] Verificatin ACC: %.2f\tBest Thres: %.2f\tTime(s): %.3f'):format(
         epoch, best_acc, best_thres, timer:time().real))
   print('\n')
-  testLogger:add{
+  self.testLogger:add{
       ['avg mAP (Verification set)'] = best_acc
    }
-  testLoggerStdDev:add{
-      ['stdDev (Test set)'] = math.sqrt(stdDev / dataLoader:size())
+  self.testLoggerStdDev:add{
+      ['stdDev (Test set)'] = math.sqrt(self.stdDev / dataLoader:size())
    }
    
   timer:reset()
@@ -101,8 +112,8 @@ function Test:repBatch(input, labels, info, allPaths)
 
   if testLoggerAcc then
     local classOutput = classificationBlock:forward(embeddings:cuda()):float()
-    confusionSoft:batchAdd(classOutput, labels)
-    lossSoft = lossSoft + config.Classification.SoftMax.model:forward(classOutput, labels)
+    self.confusionSoft:batchAdd(classOutput, labels)
+    self.lossSoft = self.lossSoft + config.Classification.SoftMax.model:forward(classOutput, labels)
     embeddings:float()
   end
   
@@ -111,7 +122,7 @@ function Test:repBatch(input, labels, info, allPaths)
   for i=1,N do
     stdDiff[i] = (embeddings[i] - centerCluster[labels[i]]):pow(2):sum() / embeddings:size(2)
   end
-  stdDev = stdDev + stdDiff:sum()/N
+  self.stdDev = self.stdDev + stdDiff:sum()/N
 end
  
 function Test:getEmbeddings(pair)
@@ -130,19 +141,19 @@ end
 
 
 function Test:evalThresholdAccuracy(distances, same_info, threshold )
-  confusion:zero()
-  confusion:batchAdd(distances:lt(threshold):add(1), same_info)
-  confusion:updateValids()
-  return confusion.totalValid
+  self.confusion:zero()
+  self.confusion:batchAdd(distances:lt(threshold):add(1), same_info)
+  self.confusion:updateValids()
+  return self.confusion.totalValid
 end 
 
 function Test:resetLogger()
   timer:reset()
   self.mapperEmbName = {}
-  lossSoft = 0
-  stdDev   = 0
-  if testLoggerAcc then
-    confusionSoft:zero()
+  self.lossSoft = 0
+  self.stdDev   = 0
+  if self.testLoggerAcc then
+    self.confusionSoft:zero()
   end
 end
 

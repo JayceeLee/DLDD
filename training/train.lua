@@ -1,9 +1,9 @@
 require 'optim'
-
+require 'hdf5'
 
 local M = {}
 
-local Train = torch.class('dddl.Train', M)
+local Train = torch.class('dldd.Train', M)
 
 
 function Train:__init(opt)
@@ -16,6 +16,7 @@ function Train:__init(opt)
       dampening = 0.0,
       weightDecay = opt.weightDecay,
    }
+   self.minLR  = 0.00001
    -- Variable for Auto Learning Decay
    self.decayAuto = 0
    self.decayAutoDiff = 0.01
@@ -25,6 +26,7 @@ function Train:__init(opt)
    if opt.SoftMax ~= 0 then
       self.trainLoggerAcc = optim.Logger(paths.concat(opt.save, 'AccuracyTrain.log'))
    end
+   self.LRlogger = optim.Logger(paths.concat(opt.save, 'LR.log'))
    self.opt = opt
 end
 
@@ -40,7 +42,7 @@ function Train:train(dataloader, models)
       self.cm = optim.ConfusionMatrix(self.opt.nClasses, torch.range(1,self.opt.nClasses))
    end
    self.optimState.learningRate = self:learningRate(epoch)
-
+   if self.optimState.learningRate < self.minLR then return false end -- LR too small
    -- init model with additional module
    local model_middle = nn.Sequential()
    model_middle:add(model):add(middleBlock)
@@ -78,6 +80,12 @@ function Train:train(dataloader, models)
             ['avg mAP  (train set)'] =  self.cm.totalValid * 100
          }
    end
+   self.LRlogger:add{['LR'] =  self.optimState.learningRate}
+
+   -- Save cluster data for comaprision between them
+   local clusters = hdf5.open(self.opt.save .. '/clusterCenters_' .. epoch .. '.hdf5', 'w')
+   clusters:write('clusters', centerCluster)
+   clusters:close()
 
    print(string.format('Epoch: [%d][TRAINING SUMMARY] Total Time(s): %.2f\tLR:: %.5f',
                        epoch, tm:time().real,  self.optimState.learningRate))
@@ -178,18 +186,12 @@ function Train:learningRate(epoch)
       local   decay = math.floor((epoch - 1) /  self.opt.LRDecay)
       return  self.opt.LR * math.pow(0.1, decay)
    else
-      print( "Auto LR-Decay")
-      print(testData.testVer - testData.bestVerAcc)
-      print(epoch - self.lastChange)
-      print(testData.diffAcc)
       if testData.bestEpoch > self.lastChange and testData.diffAcc > self.decayAutoDiff/3 then 
-         print ('update')
          self.lastChange = testData.bestEpoch 
       end
       if (testData.testVer - testData.bestVerAcc) < self.decayAutoDiff and (epoch - self.lastChange) > self.decayAutoEpoch then
          self.decayAuto = self.decayAuto  + 1
          self.lastChange = epoch
-         print ("Change Decay")
       end
       return  self.opt.LR * math.pow(0.1, self.decayAuto)
    end

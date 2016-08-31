@@ -45,7 +45,7 @@ local function countCriterion(data)
   return num
 end
 
-local CriterionConfig = class('CriterionConfig') -- the table representing the class, which will double as the metatable for the instances
+local CriterionConfig = class('dldd.CriterionConfig') -- the table representing the class, which will double as the metatable for the instances
 
 function CriterionConfig:__init(name, func, weight, params)
   self.name   = name
@@ -88,7 +88,7 @@ end
 
 local M = {}
 
-local ModelConfig = torch.class('ModelConfig', M)
+local ModelConfig = torch.class('dldd.ModelConfig', M)
 
 function ModelConfig:generateConfig(opt)
   config = {

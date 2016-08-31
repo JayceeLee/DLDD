@@ -14,7 +14,7 @@ local Threads = require 'threads'
 Threads.serialization('threads.sharedserialize')
 
 local M = {}
-local DataLoader = torch.class('openface.DataLoader', M)
+local DataLoader = torch.class('dldd.DataLoader', M)
 
 function DataLoader.create(opt, centerCluster)
    -- The train and val loader

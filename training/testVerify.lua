@@ -11,7 +11,7 @@ local normalizer = nn.Normalize(2):float()
 local timer = torch.Timer()
 
 
-local Test = torch.class('dddl.Test', M)
+local Test = torch.class('dldd.Test', M)
 
 function Test:__init(opt)
    self.testLoggerStdDev = optim.Logger(paths.concat(opt.save, 'testStdCenter.log'))
@@ -45,10 +45,10 @@ function Test:testVerification(dataLoader)
   for n, sample in dataLoader:run() do
       self:copyInputs(sample)
       self:repBatch(self.input, self.target, self.info, dataLoader.dataset.imageInfo.imagePath)
---       xlua.progress(n, dataLoader:size())
+      xlua.progress(n, dataLoader:size())
   end
 
-  if testLoggerAcc then
+  if self.testLoggerAcc then
     self.confusionSoft:updateValids()
     self.testLoggerAcc:add{
       ['avg mAP  (test set)'] = self.confusionSoft.totalValid * 100,
@@ -110,7 +110,7 @@ function Test:repBatch(input, labels, info, allPaths)
 
   for i=1,N do self.mapperEmbName[info.indices[i]] = embeddings[i] end
 
-  if testLoggerAcc then
+  if self.testLoggerAcc then
     local classOutput = classificationBlock:forward(embeddings:cuda()):float()
     self.confusionSoft:batchAdd(classOutput, labels)
     self.lossSoft = self.lossSoft + config.Classification.SoftMax.model:forward(classOutput, labels)

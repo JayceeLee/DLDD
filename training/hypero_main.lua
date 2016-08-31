@@ -15,11 +15,11 @@ cmd:option('-cudnn',       true, 'Convert the model to cudnn.')
 cmd:option('-cudnn_bench', true, 'Run cudnn to choose fastest option. Increase memory usage')
 
 ------------- Data options ------------------------
-cmd:option('-nDonkeys',     1, 'number of donkeys to initialize (data loading threads)')
+cmd:option('-nDonkeys',     2, 'number of donkeys to initialize (data loading threads)')
 cmd:option('-dataset',      'imageData', 'Options: imageData | fileData')
-cmd:option('-data',         '../MNIST/', 'Home of dataset. Images separated by train/val or two hdf5 files')
-cmd:option('-cache',        'hyper_mnist', 'Directory to cache experiments and data.')
-cmd:option('-name',         'Hyper', 'Name of experiment')
+cmd:option('-data',         '../FaceScrub/', 'Home of dataset. Images separated by train/val or two hdf5 files')
+cmd:option('-cache',        'hyper_fs', 'Directory to cache experiments and data.')
+cmd:option('-name',         'Hyper_FaceScrub', 'Name of experiment')
 cmd:option('-save',         '', 'Directory to save experiment.')
 cmd:option('-nClasses',     10,      'Number of classes in the dataset')
 cmd:option('-samplePeople', 'grouped', 'Sample people using peoplePerBatch and imagesPerPerson, grouped or cluster')
@@ -37,19 +37,19 @@ cmd:option('-init', 'msra', 'Algorithm used for initialize the weight of Conv La
 cmd:option('-optimization',    'sgd',  'optimization method')
 cmd:option('-LR',              0.01,  'initial learning rate')
 cmd:option('-LRDecay',         25,     'get 10x smaller LR after period')
-cmd:option('-LRDecay',         30,     'get 10x smaller LR after period or automatic decay after period of no progress (set negative value)')
+cmd:option('-LRDecay',         -1,     'get 10x smaller LR after period or automatic decay after period of no progress (set negative value)')
 cmd:option('-momentum',        0.9,   'momentum')
 cmd:option('-weightDecay',     5e-4,  'weight decay')
 ---------- Model options ----------------------------------
 cmd:option('-retrain',  'none', 'provide path to model to retrain with')
-cmd:option('-modelDef', 'models/pnnet.lua', 'path to model definiton')
-cmd:option('-imgDim',    28, 'Image dimension')
+cmd:option('-modelDef', 'models/deepid2.lua', 'path to model definiton')
+cmd:option('-imgDim',    55, 'Image dimension')
 cmd:option('-embSize',   128, 'size of embedding from model')
-cmd:option('-checkEpoch', 15, 'check if model get > -checkValue after this epoch. If not, mean that no reason to learn more')
+cmd:option('-checkEpoch', 10, 'check if model get > -checkValue after this epoch. If not, mean that no reason to learn more')
 cmd:option('-checkValue', 0.7, 'minimul value after some tries to continue')
 ---------- Loss options ---------------
 ---------- Raw Features module
-cmd:option('-Center', '{0.0,1.0}', 'CenterLoss, Uniform')
+cmd:option('-Center', '{0.0,0.5}', 'CenterLoss, Uniform')
 ----------Classification  module
 cmd:option('-SoftMax', '{0.0,2.0}', 'SoftMax for Classification, need nClasses, Uniform')
 ----------Pair module
@@ -140,6 +140,7 @@ function runExperiment( trainLoader, valLoader, modelConfig, opt)
    testData.bestVerAcc = 0
    testData.bestEpoch = 0
    testData.testVer = 0
+   testData.diffAcc = 0
    for e = opt.epochNumber, opt.nEpochs do
       local sucess = trainer:train(trainLoader, modelConfig)
       if not sucess then return false, Test.testVerTable end
@@ -149,6 +150,7 @@ function runExperiment( trainLoader, valLoader, modelConfig, opt)
       if testData.bestVerAcc < testData.testVer then
          print(' * Best model ', testData.testVer)
          bestModel = true
+         testData.diffAcc = testData.testVer - testData.bestVerAcc
          testData.bestVerAcc = testData.testVer
          testData.bestEpoch  = epoch
       end
@@ -156,6 +158,7 @@ function runExperiment( trainLoader, valLoader, modelConfig, opt)
       if opt.checkEpoch > 0 and epoch > opt.checkEpoch then
          if testData.bestVerAcc < opt.checkValue then return false,Test.testVerTable end -- model does not converge, break it
       end
+      
       epoch = epoch + 1
    end
    return true, Test.testVerTable
@@ -176,15 +179,15 @@ for i=1,hopt.maxHex do
    -- hyper-parameters
    local hp = {}
 
-   hp.Center  = ntbl(opt.Center)  or hs:uniform(tonumber(opt.Center[1]), tonumber(opt.Center[2]))
-   hp.SoftMax = ntbl(opt.SoftMax) or hs:uniform(tonumber(opt.SoftMax[1]), tonumber(opt.SoftMax[2]))
-   hp.Constr  = ntbl(opt.Constr)  or hs:randint(tonumber(opt.Constr[1]), tonumber(opt.Constr[2]))
-   hp.Mulbatch = ntbl(opt.Mulbatch) or hs:randint(tonumber(opt.Mulbatch[1]), tonumber(opt.Mulbatch[2]))
-   hp.Triplet  = ntbl(opt.Triplet) or hs:randint(tonumber(opt.Triplet[1]), tonumber(opt.Triplet[2]))
-   hp.Global   = ntbl(opt.Global)  or hs:randint(tonumber(opt.Global[1]), tonumber(opt.Global[2]))
-   hp.Trisim   = ntbl(opt.Trisim)  or hs:randint(tonumber(opt.Trisim[1]), tonumber(opt.Trisim[2]))
-   hp.Lifted   = ntbl(opt.Lifted)  or hs:randint(tonumber(opt.Lifted[1]), tonumber(opt.Lifted[2]))
-   hp.Triprob  = ntbl(opt.Triprob) or hs:randint(tonumber(opt.Triprob[1]), tonumber(opt.Triprob[2]))
+   hp.Center  = ntbl(opt.Center)  or hs:uniform(tonumber(opt.Center[1]), tonumber(opt.Center[2])) * math.random(0,1)
+   hp.SoftMax = ntbl(opt.SoftMax) or hs:uniform(tonumber(opt.SoftMax[1]), tonumber(opt.SoftMax[2])) * math.random(0,1)
+   hp.Constr  = ntbl(opt.Constr)  or hs:randint(tonumber(opt.Constr[1]), tonumber(opt.Constr[2])) * math.random(0,1)
+   hp.Mulbatch = ntbl(opt.Mulbatch) or hs:randint(tonumber(opt.Mulbatch[1]), tonumber(opt.Mulbatch[2])) * math.random(0,1)
+   hp.Triplet  = ntbl(opt.Triplet) or hs:randint(tonumber(opt.Triplet[1]), tonumber(opt.Triplet[2])) * math.random(0,1)
+   hp.Global   = ntbl(opt.Global)  or hs:randint(tonumber(opt.Global[1]), tonumber(opt.Global[2])) * math.random(0,1)
+   hp.Trisim   = ntbl(opt.Trisim)  or hs:randint(tonumber(opt.Trisim[1]), tonumber(opt.Trisim[2])) * math.random(0,1)
+   hp.Lifted   = ntbl(opt.Lifted)  or hs:randint(tonumber(opt.Lifted[1]), tonumber(opt.Lifted[2])) * math.random(0,1)
+   hp.Triprob  = ntbl(opt.Triprob) or hs:randint(tonumber(opt.Triprob[1]), tonumber(opt.Triprob[2])) * math.random(0,1)
    hp.save = paths.concat(hopt.cache, hopt.name .. "_" .. os.date("%Y-%m-%d_%H-%M-%S"))
    for k,v in pairs(hp) do opt[k] = v end
    print('Saving everything to: ' .. opt.save)

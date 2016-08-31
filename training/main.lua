@@ -5,11 +5,19 @@ require 'optim'
 require 'paths'
 require 'xlua'
 require 'json'
+ require 'hdf5'
 
 function  saveJson(fileName, data)
    local file = assert(io.open(fileName, "w"))
    file:write(json.encode.encode(data))
    file:close()
+end
+
+function loadHDF5(fileName, dataName)
+   local myFile = hdf5.open(fileName, 'r')
+   local data = myFile:read(dataName):all()
+   myFile:close()
+   return data
 end
 
 local opts = paths.dofile('opts.lua')
@@ -31,7 +39,13 @@ torch.setdefaulttensortype('torch.FloatTensor')
 torch.manualSeed(opt.manualSeed)
 
 -- Data loading
-centerCluster  = torch.rand(opt.nClasses, opt.embSize)
+if opt.reCluster ~= '' then
+   print("Cluster Center loaded from: " .. opt.reCluster)
+   centerCluster = loadHDF5(opt.reCluster, 'clusters')
+else
+   centerCluster = torch.rand(opt.nClasses, opt.embSize)
+end
+
 local trainLoader, valLoader = DataLoader.create(opt, centerCluster)
 local models = require 'model'
 local modelConfig = models.ModelConfig()

@@ -49,6 +49,7 @@ function M.parse(arg)
    cmd:option('-weightDecay',     5e-4,  'weight decay')
    ---------- Model options ----------------------------------
    cmd:option('-retrain', 'none', 'provide path to model to retrain with')
+   cmd:option('-reCluster', '', 'provide path to cluster centers which will be used to init. Usefull when model is retrained')
    cmd:option('-modelDef', 'models/pnnet.lua', 'path to model definiton')
    cmd:option('-imgDim', 28, 'Image dimension')
    cmd:option('-embSize', 128, 'size of embedding from model')
@@ -79,8 +80,10 @@ function M.parse(arg)
    opt.batchSize = opt.peoplePerBatch * opt.imagesPerPerson
    os.execute('mkdir -p ' .. opt.cache)
 
+   local nameLosses = (opt.SoftMax ~= 0.0 and'SoftMax_' or "") .. (opt.Center ~= 0.0 and'Center_' or "") .. (opt.Constr ~= 0.0 and'Constr_' or "") .. (opt.Mulbatch ~= 0.0 and'Mulbatch_' or "") .. (opt.Triplet ~= 0.0 and'Triplet_' or "") .. (opt.Global ~= 0.0 and'Global_' or "") .. (opt.Trisim ~= 0.0 and'Trisim_' or "") .. (opt.Lifted ~= 0.0 and'Lifted_' or "")  .. (opt.Triprob ~= 0.0 and'Triprob_' or "") 
+
    if opt.save == '' then
-      opt.save = paths.concat(opt.cache, opt.name .. "_" .. os.date("%Y-%m-%d_%H-%M-%S"))
+      opt.save = paths.concat(opt.cache, opt.name .. "_" .. nameLosses .. os.date("%Y-%m-%d_%H-%M-%S"))
    end
    os.execute('mkdir -p ' .. opt.save)
 

@@ -44,3 +44,14 @@ luac.out
 
 # Data Files
 *.hdf5
+*.h5
+
+*.txt
+*.log
+
+
+# Images
+*.jpg
+*.png
+*.jpeg
+*.bmp

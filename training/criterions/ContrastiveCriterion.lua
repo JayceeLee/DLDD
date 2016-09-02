@@ -58,7 +58,7 @@ end
 function ContrastiveCriterion:updateGradInput(input,target)
     local input1, input2 = input[1], input[2] 
     local N              = input1:size(1)
-    
+    self.gradInput    = {}
     self.gradInput[1] = torch.Tensor():resizeAs(input1):typeAs(input1):zero()
     self.gradInput[2] = torch.Tensor():resizeAs(input1):typeAs(input1):zero()
 

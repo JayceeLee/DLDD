@@ -37,16 +37,16 @@ end
 function M.Scale(size, interpolation)
    interpolation = interpolation or 'bicubic'
    return function(input)
-      return image.scale(input,size,size,interpolation)
-      -- local w, h = input:size(3), input:size(2)
-      -- if (w <= h and w == size) or (h <= w and h == size) then
-      --    return input
-      -- end
-      -- if w < h then
-      --    return image.scale(input, size, h/w * size, interpolation)
-      -- else
-      --    return image.scale(input, w/h * size, size, interpolation)
-      -- end
+--       return image.scale(input,size,size,interpolation)
+      local w, h = input:size(3), input:size(2)
+      if (w <= h and w == size) or (h <= w and h == size) then
+         return input
+      end
+      if w < h then
+         return image.scale(input, size, h/w * size, interpolation)
+      else
+         return image.scale(input, w/h * size, size, interpolation)
+      end
    end
 end
 
@@ -128,6 +128,7 @@ function M.RandomScale(minSize, maxSize)
 end
 
 -- Random crop with size 8%-100% and aspect ratio 3/4 - 4/3 (Inception-style)
+local minScale = 0.6
 function M.RandomSizedCrop(size)
    local scale = M.Scale(size)
    local crop = M.CenterCrop(size)
@@ -136,7 +137,7 @@ function M.RandomSizedCrop(size)
       local attempt = 0
       repeat
          local area = input:size(2) * input:size(3)
-         local targetArea = torch.uniform(0.08, 1.0) * area
+         local targetArea = torch.uniform(minScale, 1.0) * area
 
          local aspectRatio = torch.uniform(3/4, 4/3)
          local w = torch.round(math.sqrt(targetArea * aspectRatio))

@@ -16,7 +16,7 @@ function Train:__init(opt)
       dampening = 0.0,
       weightDecay = opt.weightDecay,
    }
-   self.minLR  = 0.00001
+   self.minLR  = -0.00001
    -- Variable for Auto Learning Decay
    self.decayAuto = 0
    self.decayAutoDiff = 0.01
@@ -130,6 +130,7 @@ function Train:trainBatch(inputs, target, info)
 
    tripletSampling.numPerClass = info.nSamplesPerClass 
    pairSampling.numPerClass    = info.nSamplesPerClass
+   local embeddings2            = model:forward(inputs)
    local embeddings            = self.model:forward(inputs)
    self:toFloat(embeddings)
    if self:checkNans(embeddings[1]) then return end-- Check if output is not NaNs 

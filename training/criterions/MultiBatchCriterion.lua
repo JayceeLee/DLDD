@@ -40,7 +40,7 @@ function MultiBatchCriterion:updateGradInput(input,target)
     local input1, input2 = input[1], input[2] 
     local N              = input1:size(1)
     local margin = self.Li:gt(0):type(input1:type()):cmul(target):expandAs(input1)
-    
+    self.gradInput = {}
     self.gradInput[1] = torch.cmul(self.diff, margin) * 2 / N
     self.gradInput[2] = -torch.cmul(self.diff, margin) * 2 / N
 

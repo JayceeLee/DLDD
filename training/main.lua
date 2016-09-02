@@ -85,3 +85,9 @@ for e = opt.epochNumber, opt.nEpochs do
    epoch = epoch + 1
 end
 
+--[[
+th main.lua -data ../../OpenFace/CASIA_FS_VGG_96_lips/ -modelDef models/preresnet.lua -name PreRes18 -peoplePerBatch 16 -imagesPerPerson 10 -imgDim 96  -LR 0.1 
+-Triplet 2.0 -Trisim 2.0 -Lifted 2.0 -Constr 2.0 -Mulbatch 2.0 -Center 0.003 -SoftMax 1.0  -nClasses 11487 -LRDecay 40 -nEpochs 140 -nDonkeys 4 -epochSize 1000 -device 2 -cache experiments/DLDD_exp/casia_fs_vgg__exp/ -nGPU 2
+
+]]--
+

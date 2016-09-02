@@ -202,17 +202,19 @@ local pca = {
       { -0.5836, -0.6948,  0.4203 },
    },
 }
-
+local imgDimCrop = 100
 function ImageData:preprocess()
    if self.split == 'train' then
       return t.Compose{
-         t.Scale(self.imgDim),
-         -- t.ColorJitter({
-         --    brightness = 0.4,
-         --    contrast = 0.4,
-         --    saturation = 0.4,
-         -- }),
-         -- t.Lighting(0.1, pca.eigval, pca.eigvec),
+         t.Scale(imgDimCrop),
+-- 	 t.Rotation(15),
+	 t.RandomCrop(self.imgDim),
+         t.ColorJitter({
+            brightness = 0.4,
+            contrast = 0.4,
+            saturation = 0.4,
+         }),
+         t.Lighting(0.1, pca.eigval, pca.eigvec),
          t.ColorNormalize(meanstd),
          t.HorizontalFlip(0.5),
       }

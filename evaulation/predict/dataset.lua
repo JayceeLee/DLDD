@@ -52,6 +52,7 @@ function ImageDataset:__init(paths_txt, opt, name)
    paths ,targets = lines_from(paths_txt)
    self.paths   = paths
    self.targets = torch.Tensor(targets):float()
+   self.imgDim = opt.imgDim
    self.opt   = opt
    self.split = name
 end
@@ -106,8 +107,6 @@ local pca = {
    },
 }
 
-local imgDimScale = 55
-local imgDim = 55
 function ImageDataset:preprocess()
    if self.split == 'aug' then
       return t.Compose{
@@ -137,7 +136,7 @@ function ImageDataset:preprocess()
    elseif self.split == 'val' then
       local Crop = self.opt.tenCrop and t.TenCrop or t.CenterCrop
       return t.Compose{
-         t.Scale(imgDimScale),
+         t.Scale(self.imgDim),
          t.ColorNormalize(meanstd)
       }
    else

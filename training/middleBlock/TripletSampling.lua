@@ -43,7 +43,7 @@ function TripletSampling:sampleWithConstraints(input)
         local pIdx   = embStartIdx + pair 
         local normsP = norms - torch.Tensor(input:size(1)):fill(norms[pIdx])
         -- Set the indices of the same class to the max so they are ignored.
-        normsP[{{embStartIdx,embStartIdx +n-1}}] = normsP:max()
+        normsP[{{embStartIdx,embStartIdx + n - 1}}] = normsP:max()
         -- Get indices of images within the margin.
         local allNeg = normsP:lt(self.alpha):nonzero()
    
@@ -71,10 +71,11 @@ function TripletSampling:sampleWithConstraints(input)
   print(('  + (nTrips, nTripsFound) = (%d, %d)'):format(self.numTrips, nTripsFound))
   if nTripsFound == 0 then
      print("Warning: nTripsFound == 0. Skipping batch.")
-     -- Set output of a=0, p=0, and n=very larnge. We want to |a-p| + alpha (~0.2) < |a-n|.
-     -- So after setting '0' we have: alpha < |n|
+     -- Set output of a=2, p=2, and n=1. This make a and p same and n different (like the out loss function want)
      self.output = torch.Tensor(3, 1, self.embSize):zero()
-     self.output[{{3},{1}}]:fill(1000)
+     self.output[{{1},{1}}]:fill(2)
+     self.output[{{2},{1}}]:fill(2)
+     self.output[{{3},{1}}]:fill(1)
      self.skipBatch = true
      return self.output
   end

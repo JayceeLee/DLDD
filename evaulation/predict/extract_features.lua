@@ -19,6 +19,8 @@ opt = lapp[[
    --GPU                      (default 1)         GPU ID
    --aug                      (default 1)         get results by TTA, set number of augumentation
    --save                     (default 'predictions.h5')         name of prediction
+   --normalize                (default false)         normalize features by L2
+   --imgDim                   (default 96)         size of image input to network
 ]]
 torch.manualSeed(opt.manualSeed)
 cutorch.manualSeed(opt.manualSeed)
@@ -28,9 +30,13 @@ print(opt)
 local  data = ImageDataset(opt.valData,opt,'val')
 data.preprocess_image = data:preprocess()
 local  model = torch.load(opt.model):clearState():cuda()
+local normalize = nn.Identity():float()
+if opt.normalize == 'true' then
+  print ("Normalize features by L2")
+  normalize = nn.Normalize(2):float()
+end
 
-
-optnet.optimizeMemory(model, torch.CudaTensor(10,3,55,55))
+optnet.optimizeMemory(model, torch.CudaTensor(10,3,opt.imgDim,opt.imgDim))
 
 function loadImages(indices, data )
   local sz = indices:size(1)
@@ -68,7 +74,7 @@ function testData(data)
   end
   outputs            = torch.concat(outputs):float()
   target             = torch.concat(target):float()
-  return outputs, target
+  return normalize:forward(outputs), target
 end
 
 local out,target = testData(data)

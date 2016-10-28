@@ -53,7 +53,7 @@ function createModel()
    net:add(ReLU(true))
    net:add(SpatialConvolution(160, 320, 3, 3, 1, 1, 1, 1))
 --    net:add(nn.SpatialBatchNormalization(320))
-   net:add(ReLU(true))
+--    net:add(ReLU(true)) -- Without this Relu after last conv layer
 --    net:add(SpatialMaxPooling(2, 2, 2, 2, 1, 1))
 -- 
    net:add(SpatialAveragePooling(7, 7))

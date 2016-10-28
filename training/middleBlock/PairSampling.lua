@@ -104,13 +104,13 @@ function PairSampling:randomPairs(input)
 
          selNegIdx = negIdx[math.random (negIdx:size(1))]
          -- Add the embeding of each example.
-         table.insert(as_table,input[aIdx]:float()) -- postive pair
-         table.insert(sc_table,input[pIdx]:float())
-         table.insert(as_table,input[aIdx]:float()) -- negative pair
-         table.insert(sc_table,input[selNegIdx]:float())
+         table.insert(as_table, input[aIdx]:float()) -- postive pair
+         table.insert(sc_table, input[pIdx]:float())
+         table.insert(as_table, input[aIdx]:float()) -- negative pair
+         table.insert(sc_table, input[selNegIdx]:float())
          -- Add the original index of pairs.
-         table.insert(self.pairIdx, {aIdx,pIdx})
-         table.insert(self.pairIdx, {aIdx,selNegIdx})
+         table.insert(self.pairIdx, {aIdx, pIdx})
+         table.insert(self.pairIdx, {aIdx, selNegIdx})
          -- Add target as positive and negative pair
          table.insert(target, 1)
          table.insert(target, -1)
@@ -123,7 +123,7 @@ function PairSampling:randomPairs(input)
 
    self.output = self:concatOutput({as_table, sc_table})
    self.target = torch.Tensor(target)
-   return self.output
+   return self.output:type(input:type())
 end
 
 function PairSampling:concatOutput(dataTable)
@@ -134,16 +134,16 @@ function PairSampling:concatOutput(dataTable)
 end
 
 function PairSampling:updateGradInput(input, gradOutput)
-   --map gradient to the index of input
+   -- Map gradient to the index of input
   self.gradInput = torch.Tensor(input:size(1),input:size(2)):type(input:type())
   self.gradInput:zero()
   if self.skipBatch then -- if no pair satisfy constrains, return zero gradient
     return self.gradInput
   end
-  --get all gradient for each example
+  -- Get all gradient for each example
   for i=1,table.getn(self.pairIdx) do
-      self.gradInput[self.pairIdx[i][1]]:add(gradOutput[1][i])
-      self.gradInput[self.pairIdx[i][2]]:add(gradOutput[2][i])
+    self.gradInput[self.pairIdx[i][1]]:add(gradOutput[1][i])
+    self.gradInput[self.pairIdx[i][2]]:add(gradOutput[2][i])
   end
   -- Averege gradient per number of pairs?
   self.gradInput = self.gradInput / input:size(1)

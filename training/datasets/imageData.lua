@@ -202,13 +202,14 @@ local pca = {
       { -0.5836, -0.6948,  0.4203 },
    },
 }
-local imgDimCrop = 100
+--TODO: add this to arguments
+local imgDimCrop = 256
 function ImageData:preprocess()
    if self.split == 'train' then
       return t.Compose{
-         t.Scale(imgDimCrop),
+         t.Scale(256),
 -- 	 t.Rotation(15),
-	 t.RandomCrop(self.imgDim),
+         t.RandomSizedCrop(self.imgDim),
          t.ColorJitter({
             brightness = 0.4,
             contrast = 0.4,
@@ -221,8 +222,9 @@ function ImageData:preprocess()
    elseif self.split == 'val' then
       local Crop = self.opt.tenCrop and t.TenCrop or t.CenterCrop
       return t.Compose{
-         t.Scale(self.imgDim),
+         t.Scale(256),
          t.ColorNormalize(meanstd),
+         Crop(self.imgDim)
       }
    else
       error('invalid split: ' .. self.split)

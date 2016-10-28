@@ -123,20 +123,20 @@ function Train:trainBatch(inputs, target, info)
    collectgarbage()
 
    if opt.cuda then
-    cutorch.synchronize()
+      cutorch.synchronize()
    end
 
    local numImages = inputs:size(1)
 
    tripletSampling.numPerClass = info.nSamplesPerClass 
    pairSampling.numPerClass    = info.nSamplesPerClass
-   local embeddings2            = model:forward(inputs)
+   -- local embeddings2            = model:forward(inputs)
    local embeddings            = self.model:forward(inputs)
    self:toFloat(embeddings)
    if self:checkNans(embeddings[1]) then return end-- Check if output is not NaNs 
    self.model:zeroGradParameters()
    if config.PairSamplingEnable then -- Get targets for Pair Sampling
-    target = {target, target, pairSampling.target, target}
+      target = {target, target, pairSampling.target, target, pairSampling.target}
    end
 
    local err     = criterion:forward(embeddings, target)
@@ -155,30 +155,29 @@ function Train:trainBatch(inputs, target, info)
    self.batchNumber = self.batchNumber + 1
 
    if config.PairSamplingEnable then
-    target = target[1]
+      target = target[1]
    end
    self:logBatch(embeddings, target)
-   self:updateClusters(embeddings, target, info)
+   -- self:updateClusters(embeddings, target, info)
 
    self.all_time = self.all_time + timer:time().real
    timer:reset()
-
 end
 
 function Train:toFloat(data)
-  for key,value in pairs(data) do
-    if type(value) == "table" then
-      data[key] = {value[1]:float(), value[2]:float()}
-    else  
-      data[key] = value:float()
-    end
-  end
+   for key,value in pairs(data) do
+      if type(value) == "table" then
+         data[key] = {value[1]:float(), value[2]:float()}
+      else  
+         data[key] = value:float()
+      end
+   end
 end
 
 function Train:toCuda(data)
-  for key,value in pairs(data) do
-    data[key] = value:cuda()
-  end
+   for key,value in pairs(data) do
+      data[key] = value:cuda()
+   end
 end
 
 function Train:learningRate(epoch)
@@ -228,9 +227,9 @@ end
 function Train:checkNans(x)
    local I = torch.ne(x,x)
    if torch.any(I) then
-     print("train.lua: Error: NaNs found in: output")
-     self.embNaN = true
-     return true
+      print("train.lua: Error: NaNs found in: output")
+      self.embNaN = true
+      return true
    end
    return false
 end

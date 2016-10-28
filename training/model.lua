@@ -20,6 +20,7 @@ paths.dofile('criterions/TripletEmbeddingRatioCriterion.lua')
 paths.dofile('criterions/TripletSimilarityCriterion.lua')
 paths.dofile('criterions/LiftedStructuredCritertion.lua')
 paths.dofile('criterions/TripletProbabilityCriterion.lua')
+paths.dofile('criterions/CSubTableMy.lua')
 
 paths.dofile('criterions/EmptyCriterion.lua')
 paths.dofile('criterions/ParallelCriterionS.lua')
@@ -91,30 +92,33 @@ local M = {}
 local ModelConfig = torch.class('dldd.ModelConfig', M)
 
 function ModelConfig:generateConfig(opt)
-  config = {
-    Raw = {
-     Center = CriterionConfig('Center', nn.CenterCriterion, opt.Center, {centerCluster}),
-    },
-    Classification = {
-     SoftMax = CriterionConfig('SoftMax', nn.CrossEntropyCriterion, opt.SoftMax),
-    },
-    Pair = {
-     Constrastive =  CriterionConfig('Constrastive', nn.ContrastiveCriterion, opt.Constr, {1.0}),
-     MultiBatch   = CriterionConfig('MultiBatchCriterion', nn.MultiBatchCriterion, opt.Mulbatch, {1.0}),
-     CosineEmbedding = CriterionConfig('CosineEmbeddingCriterion', nn.CosineEmbeddingCriterion, opt.Cosine, {1.0}), --Error:  return the table, not tensor
-    },
-    Triplets = {
-     Triplet       = CriterionConfig('Triplet', nn.TripletEmbeddingCriterion, opt.Triplet, {opt.alpha}),
-     GlobalTriplet = CriterionConfig('GlobalTriplet', nn.GlobalCriterionTriplet, opt.Global, {0.4, 0.8}),
-     TripletRatio  = CriterionConfig('TripletRatio', nn.TripletEmbeddingRatioCriterion, opt.Triratio, {0.01}),
-     TripletSimilarity = CriterionConfig('TripletSimilarityCriterion', nn.TripletSimilarityCriterion, opt.Trisim, {0.1}),
-     LiftedStructured = CriterionConfig('LiftedStructuredCritertion', nn.LiftedStructuredCritertion, opt.Lifted, {1.0}),
-     TripletProbability = CriterionConfig('TripletProbabilityCriterion', nn.TripletProbabilityCriterion, opt.Triprob),
-    },
-    PairSamplingEnable = -1,
-    PairSampling  = 'random',
-    TripletSampling = 'semi-hard' --'random'
-  }
+   config = {
+      Raw = {
+         Center = CriterionConfig('Center', nn.CenterCriterion, opt.Center, {centerCluster}),
+      },
+      Classification = {
+         SoftMax = CriterionConfig('SoftMax', nn.CrossEntropyCriterion, opt.SoftMax),
+      },
+      Pair = {
+         Constrastive    = CriterionConfig('Constrastive', nn.ContrastiveCriterion, opt.Constr, {1.0}),
+         MultiBatch      = CriterionConfig('MultiBatchCriterion', nn.MultiBatchCriterion, opt.Mulbatch, {1.0}),     
+         CosineEmbedding = CriterionConfig('CosineEmbeddingCriterion', nn.CosineEmbeddingCriterion, opt.Cosine, {1.0}), --Error:  return the table, not tensor
+      },
+      Triplets = {
+         Triplet            = CriterionConfig('Triplet', nn.TripletEmbeddingCriterion, opt.Triplet, {opt.alpha}),
+         GlobalTriplet      = CriterionConfig('GlobalTriplet', nn.GlobalCriterionTriplet, opt.Global, {0.4, 0.8}),
+         TripletRatio       = CriterionConfig('TripletRatio', nn.TripletEmbeddingRatioCriterion, opt.Triratio, {0.01}),
+         TripletSimilarity  = CriterionConfig('TripletSimilarityCriterion', nn.TripletSimilarityCriterion, opt.Trisim, {0.1}),
+         LiftedStructured   = CriterionConfig('LiftedStructuredCritertion', nn.LiftedStructuredCritertion, opt.Lifted, {1.0}),
+         TripletProbability = CriterionConfig('TripletProbabilityCriterion', nn.TripletProbabilityCriterion, opt.Triprob),
+      },
+      PairClassification = {
+          SoftMaxPair       = CriterionConfig('SoftMaxPair', nn.CrossEntropyCriterion, opt.SoftMaxPair),
+      },
+      PairSamplingEnable = -1,
+      PairSampling  = 'random',
+      TripletSampling = 'semi-hard' --'random'
+   }
   
 end
 
@@ -131,8 +135,8 @@ function ModelConfig:modelSetup(continue)
     print("Using imgDim = ", opt.imgDim)
   else
     paths.dofile(opt.modelDef)
-    assert(imgDim, "Model definition must set global variable 'imgDim'")
-    assert(imgDim == opt.imgDim, "Model definiton's imgDim must match imgDim option.")
+--     assert(imgDim, "Model definition must set global variable 'imgDim'")
+--     assert(imgDim == opt.imgDim, "Model definiton's imgDim must match imgDim option.")
     model = createModel()
     utils.initWeight(model)
     utils.FCinit(model)
@@ -164,9 +168,11 @@ function ModelConfig:middleBlockSetup(opt)
   -- Classification module
   classificationBlock = nn.Identity()
   if ifAny(config.Classification) then
-    classificationBlock = nn.Sequential():add(nn.ReLU(true)):add(nn.Linear(opt.embSize,opt.nClasses))
+    classificationBlock = nn.Sequential():add(nn.Linear(opt.embSize,opt.nClasses)) --:add(nn.ReLU(true))
+    utils.FCinit(classificationBlock)
   end
   middleBlock:add(classificationBlock)
+
   -- Pair module
   pairSampling = nn.Identity()
   if ifAny(config.Pair) then
@@ -174,12 +180,23 @@ function ModelConfig:middleBlockSetup(opt)
     pairSampling = nn.PairSampling(opt, config.PairSampling)
   end
   middleBlock:add(pairSampling) -- pairs
+
   -- Triplet module
   tripletSampling = nn.Identity()
   if ifAny(config.Triplets) then
-    tripletSampling = nn.TripletSampling(opt,opt.TripletSampling)
+    tripletSampling = nn.TripletSampling(opt,opt.TripletSampling) 
   end
   middleBlock:add(nn.Sequential():add(nn.Normalize(2)):add(tripletSampling))
+
+  -- Pair classification
+  pairClassification = nn.Identity()
+  if ifAny(config.PairClassification) then
+    config.PairSamplingEnable = 1
+    pairSampling              = nn.PairSampling(opt, config.PairSampling)
+    pairClassification        = nn.Sequential():add(pairSampling):add(nn.CSubTableMy()):add(nn.Linear(opt.embSize,2))
+    utils.FCinit(pairClassification)
+  end
+  middleBlock:add(pairClassification) 
   
   if opt.cudnn then
     cudnn.convert(middleBlock,cudnn)
@@ -228,7 +245,9 @@ function ModelConfig:critertionSetup(opt)
    self:setupSingleLoss(config.Pair, criterionsBlock, listActiveCriterion, opt)
    -- Triplet Loss
    self:setupSingleLoss(config.Triplets, criterionsBlock, listActiveCriterion, opt)
-   return criterionsBlock:float()
+   -- Pair for classification
+   self:setupSingleLoss(config.PairClassification, criterionsBlock, listActiveCriterion, opt)
+   return criterionsBlock
 end  
 
 return M

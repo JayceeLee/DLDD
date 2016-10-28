@@ -18,7 +18,7 @@ local ReLU = nn.ReLU
 local Max = nn.SpatialMaxPooling
 local SBatchNorm = nn.SpatialBatchNormalization
 
-imgDim = 96
+imgDim = 100
 
 function createModel()
    local depth = 18
@@ -154,7 +154,7 @@ function createModel()
     model:add(layer(block, 512, def[4], 2))
     model:add(ShareGradInput(SBatchNorm(iChannels), 'last'))
     -- model:add(ReLU(true))
-    model:add(Avg(3, 3, 1, 1)) -- input 96x96
+    model:add(Avg(4, 4, 1, 1)) -- input 96x96
     model:add(nn.View(nFeatures):setNumInputDims(3))
     -- model:add(nn.Linear(nFeatures, opt.embSize))
   

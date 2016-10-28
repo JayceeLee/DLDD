@@ -41,16 +41,30 @@ function utils.initWeight(model)
    for k,v in pairs(model:findModules('nn.SpatialConvolution')) do
 --       local n = v.kW*v.kH*v.nOutputPlane
 --       v.weight:normal(0,math.sqrt(2/n))
-      if opt.init == "orthogonal" then
-         v:init('weight', nninit.orthogonal, {gain = 'relu'})
-      elseif opt.init == "msra"  then
-         v:init('weight', nninit.kaiming, {dist = 'uniform',gain = 'relu'})
-      elseif opt.init == "xavier" then
-         v:init('weight', nninit.xavier, {dist = 'normal'})
-      elseif opt.init == "gaussian" then
-         v:init('weight', nninit.addNormal, 0.0, 0.01) -- mean and std-dev
-      end
-      if v.bias then v.bias:zero() end
+--       if opt.init == "orthogonal" then
+--          v:init('weight', nninit.orthogonal, {gain = 'relu'})
+--       elseif opt.init == "msra"  then
+--          v:init('weight', nninit.kaiming, {dist = 'uniform',gain = 'relu'})
+--       elseif opt.init == "xavier" then
+--          v:init('weight', nninit.xavier, {dist = 'normal'})
+--       elseif opt.init == "gaussian" then
+--          v:init('weight', nninit.addNormal, 0.0, 0.01) -- mean and std-dev
+--       end
+      -- if v.bias then v.bias:zero() end
+
+--       local n = v.kW*v.kH*v.nOutputPlane
+--       v.weight:normal(0,math.sqrt(2/n))
+--       if cudnn.version >= 4000 then
+--          v.bias = nil
+--          v.gradBias = nil
+--       else
+--          v.bias:zero()
+--       end
+   end
+
+   for k,v in pairs(model:findModules(nn.SpatialBatchNormalization)) do
+      v.weight:fill(1)
+      v.bias:zero()
    end
 end
 

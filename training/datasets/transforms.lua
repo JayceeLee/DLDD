@@ -39,6 +39,7 @@ function M.Scale(size, interpolation)
    return function(input)
 --       return image.scale(input,size,size,interpolation)
       local w, h = input:size(3), input:size(2)
+      -- return image.scale(input, sizeH, sizeW, interpolation)
       if (w <= h and w == size) or (h <= w and h == size) then
          return input
       end
@@ -128,7 +129,7 @@ function M.RandomScale(minSize, maxSize)
 end
 
 -- Random crop with size 8%-100% and aspect ratio 3/4 - 4/3 (Inception-style)
-local minScale = 0.6
+local minScale = 0.08
 function M.RandomSizedCrop(size)
    local scale = M.Scale(size)
    local crop = M.CenterCrop(size)

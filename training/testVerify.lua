@@ -111,9 +111,9 @@ function Test:repBatch(input, labels, info, allPaths)
   for i=1,N do self.mapperEmbName[info.indices[i]] = embeddings[i] end
 
   if self.testLoggerAcc then
-    local classOutput = classificationBlock:forward(embeddings:cuda()):float()
-    self.confusionSoft:batchAdd(classOutput, labels)
+    local classOutput = classificationBlock:forward(embeddings:cuda())
     self.lossSoft = self.lossSoft + config.Classification.SoftMax.model:forward(classOutput, labels)
+    self.confusionSoft:batchAdd(classOutput:float(), labels)
     embeddings:float()
   end
   

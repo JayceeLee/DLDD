@@ -22,9 +22,9 @@ function ContrastiveCriterion:updateOutput(input, target)
     --calculate diff and dot product
     self.diff = input1 - input2
     local dot = torch.pow(self.diff,2):sum(2)
-    self.Li  = torch.Tensor(N)
-    self.negative  = torch.Tensor(N)
-    self.diff_margin  = torch.Tensor(N)
+    self.Li  = torch.Tensor(N):type(input:type())
+    self.negative  = torch.Tensor(N):type(input:type())
+    self.diff_margin  = torch.Tensor(N):type(input:type())
     
     for i=1,N do
       if target[i] == 1 then  --select positive example
